@@ -1,6 +1,6 @@
 import yfinance as yf
 import pandas as pd
-
+from services.currency import normalize_price
 
 def get_live_price(ticker: str):
     try:
@@ -8,7 +8,14 @@ def get_live_price(ticker: str):
         data = stock.history(period="1d")
         if data.empty:
             return None
-        return float(data["Close"].iloc[-1])
+
+        # Get currency
+        info = stock.info
+        currency = info.get("currency", "ZAR")  # default to ZAR if missing
+
+        raw_price = float(data["Close"].iloc[-1])
+        price = normalize_price(ticker, raw_price, currency)
+        return price
     except Exception:
         return None
 
@@ -25,7 +32,8 @@ def calculate_portfolio_summary(transactions):
     df = pd.DataFrame([{
         "ticker": t.ticker,
         "quantity": t.quantity if t.type == "buy" else -t.quantity,
-        "price": t.price
+        "price": t.price,
+        "type": t.type
     } for t in transactions])
 
     grouped = df.groupby("ticker").agg({
@@ -46,8 +54,8 @@ def calculate_portfolio_summary(transactions):
 
         avg_price = row["price"]
         invested = quantity * avg_price
-        live_price = get_live_price(ticker)
 
+        live_price = get_live_price(ticker)
         if live_price is None:
             continue
 
