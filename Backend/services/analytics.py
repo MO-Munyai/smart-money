@@ -1,46 +1,52 @@
-# services/analytics.py
-
+# Backend/portfolio.py
 from sqlalchemy.orm import Session
-from models import Position, Asset
-from services.market import get_live_prices
+from services.market import get_live_price
+from crud import get_positions, get_assets
+import pandas as pd
 
-def generate_portfolio_report(db: Session):
+def generate_portfolio(db: Session):
     """
-    Generates a complete portfolio analytics report.
-    Returns a dictionary with total value, allocations, sector breakdown,
-    weighted metrics (PE, beta, ROE, dividend yield) and gain/loss info.
+    Generates the full portfolio snapshot:
+    - Positions (quantity, avg cost)
+    - Live price per ticker
+    - Current value per position
+    - Gain/Loss
+    - Total invested, total current value, total gain/loss
+    - Sector and industry breakdown
+    - Weighted metrics: PE, Beta, ROE, Dividend Yield
     """
-    positions = db.query(Position).all()
+    positions = get_positions(db)
     if not positions:
         return {
-            "total_value": 0,
             "total_invested": 0,
+            "total_current_value": 0,
             "total_gain_loss": 0,
-            "allocations": {},
+            "positions": [],
             "sector_breakdown": {},
-            "weighted_metrics": {},
-            "positions": []
+            "industry_breakdown": {},
+            "weighted_metrics": {}
         }
 
+    # Fetch all assets for metrics
+    assets_list = get_assets(db)
+    assets_dict = {a.ticker.upper(): a for a in assets_list}
+
     total_invested = 0
-    total_value = 0
+    total_current_value = 0
     positions_data = []
-    allocations = {}
+
     sector_breakdown = {}
+    industry_breakdown = {}
     weighted_metrics = {"pe_ratio": 0, "beta": 0, "roe": 0, "dividend_yield": 0}
     weight_sum = 0
 
-    # Collect tickers for batch price fetch
-    tickers = [pos.ticker.upper() for pos in positions]
-    live_prices = get_live_prices(tickers)
-
     for pos in positions:
-        ticker = pos.ticker.upper()
-        quantity = pos.quantity
-        avg_cost = pos.avg_cost
+        ticker = pos["ticker"].upper()
+        quantity = pos["quantity"]
+        avg_cost = pos["avg_cost"]
         invested = quantity * avg_cost
 
-        live_price = live_prices.get(ticker)
+        live_price = get_live_price(ticker)
         if live_price is None:
             continue
 
@@ -49,9 +55,9 @@ def generate_portfolio_report(db: Session):
 
         # Update totals
         total_invested += invested
-        total_value += current_value
+        total_current_value += current_value
 
-        # Append individual position
+        # Append position
         positions_data.append({
             "ticker": ticker,
             "quantity": quantity,
@@ -62,26 +68,29 @@ def generate_portfolio_report(db: Session):
             "gain_loss": gain_loss
         })
 
-        # Allocation by ticker
-        allocations[ticker] = current_value
+        # Sector & Industry breakdown
+        asset = assets_dict.get(ticker)
+        if asset:
+            if asset.sector:
+                sector_breakdown.setdefault(asset.sector, 0)
+                sector_breakdown[asset.sector] += current_value
 
-        # Sector metrics
-        asset = db.query(Asset).filter(Asset.ticker == ticker).first()
-        if asset and asset.sector:
-            sector_breakdown.setdefault(asset.sector, 0)
-            sector_breakdown[asset.sector] += current_value
+            if asset.industry:
+                industry_breakdown.setdefault(asset.industry, 0)
+                industry_breakdown[asset.industry] += current_value
 
+            # Weighted metrics
             weight = current_value
             weight_sum += weight
-
             for key in ["pe_ratio", "beta", "roe", "dividend_yield"]:
                 value = getattr(asset, key) or 0
                 weighted_metrics[key] += value * weight
 
-    # Normalize allocations and sector breakdown
-    if total_value > 0:
-        allocations = {k: v / total_value for k, v in allocations.items()}
-        sector_breakdown = {k: v / total_value for k, v in sector_breakdown.items()}
+    # Normalize sector/industry breakdown
+    for key in sector_breakdown:
+        sector_breakdown[key] = sector_breakdown[key] / total_current_value if total_current_value > 0 else 0
+    for key in industry_breakdown:
+        industry_breakdown[key] = industry_breakdown[key] / total_current_value if total_current_value > 0 else 0
 
     # Normalize weighted metrics
     if weight_sum > 0:
@@ -92,11 +101,11 @@ def generate_portfolio_report(db: Session):
             weighted_metrics[key] = 0
 
     return {
-        "total_value": total_value,
         "total_invested": total_invested,
-        "total_gain_loss": total_value - total_invested,
-        "allocations": allocations,
+        "total_current_value": total_current_value,
+        "total_gain_loss": total_current_value - total_invested,
+        "positions": positions_data,
         "sector_breakdown": sector_breakdown,
-        "weighted_metrics": weighted_metrics,
-        "positions": positions_data
+        "industry_breakdown": industry_breakdown,
+        "weighted_metrics": weighted_metrics
     }
