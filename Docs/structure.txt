@@ -8,13 +8,17 @@ SmartMoney/
 │   ├── database.py
 │   ├── main.py
 │   ├── models.py
+│   ├── portfolio.db
 │   ├── schemas.py
 │   ├── __pycache__/
 │   └── services/
+│       ├── analytics.py
 │       ├── currency.py
 │       ├── market.py
+│       ├── portfolio.py
 │       └── __pycache__/
 ├── Docs/
-│   └── Notes.MD
+│   ├── Notes.MD
+│   └── structure.txt  # (this file)
 └── Frontend/
     └── app.py
