@@ -1,0 +1,20 @@
+SmartMoney/
+├── backend_requirements.txt
+├── frontend_requirements.txt
+├── ReadMe.MD
+├── Backend/
+│   ├── config.py
+│   ├── crud.py
+│   ├── database.py
+│   ├── main.py
+│   ├── models.py
+│   ├── schemas.py
+│   ├── __pycache__/
+│   └── services/
+│       ├── currency.py
+│       ├── market.py
+│       └── __pycache__/
+├── Docs/
+│   └── Notes.MD
+└── Frontend/
+    └── app.py
