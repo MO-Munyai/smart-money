@@ -1,18 +1,15 @@
-from fastapi import FastAPI, Depends, HTTPException
+# Backend/main.py
+
+from fastapi import FastAPI, HTTPException, Depends
 from sqlalchemy.orm import Session
-from typing import List
-
-from database import SessionLocal, engine
-import models
-import schemas
+from database import SessionLocal, engine, Base
 import crud
-from services import market
+import schemas
 
-# Create database tables
-models.Base.metadata.create_all(bind=engine)
+# Create tables if they don't exist
+Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Personal Stock Portfolio API")
-
+app = FastAPI(title="SmartMoney v0.2", version="0.2")
 
 # Dependency to get DB session
 def get_db():
@@ -23,48 +20,62 @@ def get_db():
         db.close()
 
 
-# Root endpoint
-@app.get("/")
-def read_root():
-    return {"message": "Stock Portfolio API is running."}
+# -------------------- TRANSACTIONS --------------------
+@app.post("/transactions", response_model=schemas.Transaction)
+def create_transaction(transaction: schemas.TransactionCreate, db: Session = Depends(get_db)):
+    try:
+        db_transaction = crud.create_transaction(db, transaction)
+        return db_transaction
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
-# Create transaction
-@app.post("/transactions", response_model=schemas.TransactionResponse)
-def create_transaction(
-    transaction: schemas.TransactionCreate,
-    db: Session = Depends(get_db)
-):
-    return crud.create_transaction(db=db, transaction=transaction)
-
-
-# Get all transactions
-@app.get("/transactions", response_model=List[schemas.TransactionResponse])
+@app.get("/transactions", response_model=list[schemas.Transaction])
 def get_transactions(db: Session = Depends(get_db)):
-    return crud.get_transactions(db=db)
+    return crud.get_transactions(db)
 
 
-# Delete transaction
 @app.delete("/transactions/{transaction_id}")
 def delete_transaction(transaction_id: int, db: Session = Depends(get_db)):
-    deleted = crud.delete_transaction(db=db, transaction_id=transaction_id)
-    if not deleted:
+    success = crud.delete_transaction(db, transaction_id)
+    if not success:
         raise HTTPException(status_code=404, detail="Transaction not found")
     return {"message": "Transaction deleted successfully"}
 
 
-# Get live price
-@app.get("/price/{ticker}")
-def get_price(ticker: str):
-    price = market.get_live_price(ticker)
-    if price is None:
-        raise HTTPException(status_code=404, detail="Ticker not found")
-    return {"ticker": ticker.upper(), "price": price}
+# -------------------- POSITIONS --------------------
+@app.get("/positions")
+def get_positions(db: Session = Depends(get_db)):
+    return crud.get_positions(db)
 
 
-# Portfolio summary
-@app.get("/portfolio")
-def get_portfolio(db: Session = Depends(get_db)):
-    transactions = crud.get_transactions(db=db)
-    summary = market.calculate_portfolio_summary(transactions)
-    return summary
+@app.get("/positions/{ticker}")
+def get_position(ticker: str, db: Session = Depends(get_db)):
+    position = crud.get_position(db, ticker)
+    if not position:
+        raise HTTPException(status_code=404, detail="Position not found")
+    return position
+
+
+# -------------------- ASSETS --------------------
+@app.get("/assets")
+def get_assets(db: Session = Depends(get_db)):
+    from models import Asset
+    return db.query(Asset).all()
+
+
+@app.get("/assets/{ticker}")
+def get_asset(ticker: str, db: Session = Depends(get_db)):
+    from models import Asset
+    asset = db.query(Asset).filter(Asset.ticker == ticker.upper()).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return asset
+
+
+# -------------------- ANALYTICS --------------------
+@app.get("/portfolio/analytics")
+def portfolio_analytics(db: Session = Depends(get_db)):
+    from services.analytics import generate_portfolio_report
+    report = generate_portfolio_report(db)
+    return report

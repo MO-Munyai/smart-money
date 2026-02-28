@@ -1,26 +1,58 @@
+# services/market.py
+
 import yfinance as yf
 import pandas as pd
 from services.currency import normalize_price
 
+
 def get_live_price(ticker: str):
+    """
+    Fetches live price for a single ticker with currency normalization.
+    """
     try:
         stock = yf.Ticker(ticker)
         data = stock.history(period="1d")
         if data.empty:
             return None
 
-        # Get currency
-        info = stock.info
-        currency = info.get("currency", "ZAR")  # default to ZAR if missing
-
+        currency = stock.info.get("currency", "ZAR")
         raw_price = float(data["Close"].iloc[-1])
-        price = normalize_price(ticker, raw_price, currency)
-        return price
+        return normalize_price(ticker, raw_price, currency)
     except Exception:
         return None
 
 
+def get_live_prices(tickers: list[str]):
+    """
+    Batch fetch live prices for multiple tickers.
+    Returns a dict: {ticker: normalized_price}
+    """
+    prices = {}
+    try:
+        tickers_str = " ".join(tickers)
+        data = yf.download(tickers_str, period="1d", group_by="ticker", threads=True)
+
+        for ticker in tickers:
+            try:
+                if ticker in data.columns.levels[0]:
+                    raw_price = float(data[ticker]["Close"].iloc[-1])
+                    info = yf.Ticker(ticker).info
+                    currency = info.get("currency", "ZAR")
+                    prices[ticker] = normalize_price(ticker, raw_price, currency)
+            except Exception:
+                prices[ticker] = None
+    except Exception as e:
+        print(f"Error fetching batch prices: {e}")
+        for ticker in tickers:
+            prices[ticker] = None
+
+    return prices
+
+
 def calculate_portfolio_summary(transactions):
+    """
+    Generates portfolio summary from a list of transaction objects.
+    """
     if not transactions:
         return {
             "total_invested": 0,
@@ -32,8 +64,7 @@ def calculate_portfolio_summary(transactions):
     df = pd.DataFrame([{
         "ticker": t.ticker,
         "quantity": t.quantity if t.type == "buy" else -t.quantity,
-        "price": t.price,
-        "type": t.type
+        "price": t.price
     } for t in transactions])
 
     grouped = df.groupby("ticker").agg({
@@ -45,17 +76,18 @@ def calculate_portfolio_summary(transactions):
     total_invested = 0
     total_current_value = 0
 
+    tickers = grouped["ticker"].tolist()
+    live_prices = get_live_prices(tickers)
+
     for _, row in grouped.iterrows():
         ticker = row["ticker"]
         quantity = row["quantity"]
-
         if quantity <= 0:
             continue
 
         avg_price = row["price"]
         invested = quantity * avg_price
-
-        live_price = get_live_price(ticker)
+        live_price = live_prices.get(ticker)
         if live_price is None:
             continue
 
@@ -81,10 +113,10 @@ def calculate_portfolio_summary(transactions):
         "positions": positions
     }
 
+
 def fetch_asset_metadata(ticker: str):
     """
     Fetches fundamental metadata for a given ticker from Yahoo Finance.
-    Returns a dictionary suitable for Asset table insertion.
     """
     try:
         stock = yf.Ticker(ticker)
@@ -93,8 +125,7 @@ def fetch_asset_metadata(ticker: str):
         if not info:
             return None
 
-        # Extract key fields with defaults
-        metadata = {
+        return {
             "name": info.get("shortName") or info.get("longName") or ticker,
             "sector": info.get("sector"),
             "industry": info.get("industry"),
@@ -105,8 +136,6 @@ def fetch_asset_metadata(ticker: str):
             "roe": info.get("returnOnEquity"),
             "dividend_yield": info.get("dividendYield")
         }
-
-        return metadata
 
     except Exception as e:
         print(f"Error fetching metadata for {ticker}: {e}")

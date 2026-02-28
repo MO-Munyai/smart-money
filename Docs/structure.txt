@@ -19,6 +19,6 @@ SmartMoney/
 │       └── __pycache__/
 ├── Docs/
 │   ├── Notes.MD
-│   └── structure.txt  # (this file)
+│   └── structure.txt
 └── Frontend/
     └── app.py
