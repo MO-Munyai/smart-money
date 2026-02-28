@@ -27,3 +27,10 @@ class Asset(Base):
     roe = Column(Float)
     dividend_yield = Column(Float)
 
+class Position(Base):
+    __tablename__ = "positions"
+
+    id = Column(Integer, primary_key=True)
+    ticker = Column(String, index=True)
+    quantity = Column(Float)
+    avg_cost = Column(Float)
