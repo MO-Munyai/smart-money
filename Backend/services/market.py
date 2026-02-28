@@ -80,3 +80,34 @@ def calculate_portfolio_summary(transactions):
         "total_gain_loss": total_current_value - total_invested,
         "positions": positions
     }
+
+def fetch_asset_metadata(ticker: str):
+    """
+    Fetches fundamental metadata for a given ticker from Yahoo Finance.
+    Returns a dictionary suitable for Asset table insertion.
+    """
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+
+        if not info:
+            return None
+
+        # Extract key fields with defaults
+        metadata = {
+            "name": info.get("shortName") or info.get("longName") or ticker,
+            "sector": info.get("sector"),
+            "industry": info.get("industry"),
+            "country": info.get("country"),
+            "market_cap": info.get("marketCap"),
+            "pe_ratio": info.get("trailingPE"),
+            "beta": info.get("beta"),
+            "roe": info.get("returnOnEquity"),
+            "dividend_yield": info.get("dividendYield")
+        }
+
+        return metadata
+
+    except Exception as e:
+        print(f"Error fetching metadata for {ticker}: {e}")
+        return None
