@@ -20,7 +20,7 @@ class Transaction(TransactionBase):
     id: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 # -------------------------------
@@ -38,7 +38,7 @@ class Position(PositionBase):
     id: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 # -------------------------------
@@ -63,4 +63,4 @@ class Asset(AssetBase):
     id: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True

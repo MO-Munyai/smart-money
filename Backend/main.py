@@ -7,7 +7,9 @@ import models
 import schemas
 import crud
 from database import SessionLocal, engine
-from services.market import calculate_portfolio_summary, fetch_asset_metadata
+from services.market import fetch_asset_metadata
+from services import portfolio
+from services.analytics import generate_portfolio_report
 
 # Create DB tables
 models.Base.metadata.create_all(bind=engine)
@@ -26,12 +28,15 @@ def get_db():
 # -------------------------------
 # Transactions Endpoints
 # -------------------------------
-@app.post("/transactions", response_model=schemas.Transaction)
+@app.post("/transactions", response_model=schemas.TransactionBase)
 def create_transaction(transaction: schemas.TransactionCreate, db: Session = Depends(get_db)):
-    return crud.create_transaction(db, transaction)
+    db_transaction = crud.create_transaction(db, transaction)
+    # Rebuild positions after each transaction
+    portfolio.rebuild_positions_from_transactions(db)
+    return db_transaction
 
 
-@app.get("/transactions", response_model=List[schemas.Transaction])
+@app.get("/transactions", response_model=List[schemas.TransactionBase])
 def get_transactions(db: Session = Depends(get_db)):
     return crud.get_transactions(db)
 
@@ -41,6 +46,8 @@ def delete_transaction(transaction_id: int, db: Session = Depends(get_db)):
     success = crud.delete_transaction(db, transaction_id)
     if not success:
         raise HTTPException(status_code=404, detail="Transaction not found")
+    # Rebuild positions after deletion
+    portfolio.rebuild_positions_from_transactions(db)
     return {"message": "Transaction deleted successfully"}
 
 
@@ -73,15 +80,46 @@ def fetch_asset(ticker: str, db: Session = Depends(get_db)):
 
 
 # -------------------------------
-# Portfolio Analytics
+# Portfolio Endpoints
 # -------------------------------
 @app.get("/portfolio/summary")
 def portfolio_summary(db: Session = Depends(get_db)):
-    transactions = crud.get_transactions(db)
-    return calculate_portfolio_summary(transactions)
+    """
+    Returns live portfolio summary using positions rebuilt from transactions.
+    """
+    portfolio.rebuild_positions_from_transactions(db)
+    positions = portfolio.get_positions(db)
+
+    total_invested = sum(p.avg_cost * p.quantity for p in positions)
+    total_value = sum(p.quantity * p.avg_cost for p in positions)  # temp; can replace with live prices
+    total_gain_loss = total_value - total_invested
+
+    positions_data = [
+        {
+            "ticker": p.ticker,
+            "quantity": p.quantity,
+            "avg_cost": p.avg_cost,
+            "invested": p.avg_cost * p.quantity
+        }
+        for p in positions
+    ]
+
+    return {
+        "total_invested": total_invested,
+        "current_value": total_value,
+        "total_gain_loss": total_gain_loss,
+        "positions": positions_data
+    }
 
 
 @app.get("/portfolio/analytics")
 def portfolio_analytics(db: Session = Depends(get_db)):
-    from services.analytics import generate_portfolio_report
+    """
+    Returns full portfolio analytics:
+    - sector & industry breakdown
+    - weighted metrics (PE, Beta, ROE, Dividend Yield)
+    - gain/loss per position
+    """
+    # Ensure positions are rebuilt
+    portfolio.rebuild_positions_from_transactions(db)
     return generate_portfolio_report(db)

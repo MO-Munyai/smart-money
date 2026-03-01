@@ -4,7 +4,7 @@ from services.market import get_live_price
 from crud import get_positions, get_assets
 import pandas as pd
 
-def generate_portfolio(db: Session):
+def generate_portfolio_report(db: Session):
     """
     Generates the full portfolio snapshot:
     - Positions (quantity, avg cost)
