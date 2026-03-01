@@ -4,3 +4,6 @@
 3. in backend dir "uvicorn main:app --reload" to start backend
 4. open "http://127.0.0.1:8000/docs" for API details
 5. in frontend dir "streamlit run app.py"
+
+
+- Need to fix the backend beccause its not returning the correct values 
