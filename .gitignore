@@ -1,0 +1,4 @@
+internal/*
+pycache/*
+_pycache__/*
+portfolio.db
