@@ -125,6 +125,8 @@ def fetch_asset_metadata(ticker: str):
         if not info:
             return None
 
+        roe_raw = info.get("returnOnEquity")
+
         return {
             "ticker": ticker.upper(),
             "name": info.get("shortName") or info.get("longName") or ticker,
@@ -134,7 +136,14 @@ def fetch_asset_metadata(ticker: str):
             "market_cap": info.get("marketCap"),
             "pe_ratio": info.get("trailingPE"),
             "beta": info.get("beta"),
-            "roe": info.get("returnOnEquity"),
+            # yfinance returns returnOnEquity as a raw decimal fraction
+            # (e.g. 1.4875 for 148.75% ROE), while dividendYield already
+            # comes back as a percentage number (e.g. 0.35 for 0.35%).
+            # Scale ROE to match dividend_yield's units so both fields in
+            # the Asset table are consistently "already a percent" -
+            # frontend code can display both the same way without needing
+            # to remember which one needs *100 and which doesn't.
+            "roe": roe_raw * 100 if roe_raw is not None else None,
             "dividend_yield": info.get("dividendYield")
         }
 
