@@ -126,6 +126,7 @@ def fetch_asset_metadata(ticker: str):
             return None
 
         return {
+            "ticker": ticker.upper(),
             "name": info.get("shortName") or info.get("longName") or ticker,
             "sector": info.get("sector"),
             "industry": info.get("industry"),
