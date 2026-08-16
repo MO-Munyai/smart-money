@@ -7,7 +7,7 @@ import models
 import schemas
 import crud
 from database import SessionLocal, engine
-from services.market import fetch_asset_metadata
+from services.market import fetch_asset_metadata, get_live_price
 from services import portfolio
 from services.analytics import generate_portfolio_report
 
@@ -90,19 +90,36 @@ def portfolio_summary(db: Session = Depends(get_db)):
     portfolio.rebuild_positions_from_transactions(db)
     positions = portfolio.get_positions(db)
 
-    total_invested = sum(p.avg_cost * p.quantity for p in positions)
-    total_value = sum(p.quantity * p.avg_cost for p in positions)  # temp; can replace with live prices
-    total_gain_loss = total_value - total_invested
+    total_invested = 0
+    total_value = 0
+    positions_data = []
 
-    positions_data = [
-        {
+    for p in positions:
+        invested = p.avg_cost * p.quantity
+        live_price = get_live_price(p.ticker)
+        if live_price is None:
+            # Matches services/analytics.py's convention: a position with no
+            # live price is dropped from totals rather than falling back to
+            # avg_cost. This silently understates total_invested/gain_loss
+            # when Yahoo has no data for a ticker - flagged as a follow-up,
+            # not fixed here, so both routes stay consistent with each other.
+            continue
+
+        current_value = p.quantity * live_price
+        total_invested += invested
+        total_value += current_value
+
+        positions_data.append({
             "ticker": p.ticker,
             "quantity": p.quantity,
             "avg_cost": p.avg_cost,
-            "invested": p.avg_cost * p.quantity
-        }
-        for p in positions
-    ]
+            "live_price": live_price,
+            "invested": invested,
+            "current_value": current_value,
+            "gain_loss": current_value - invested
+        })
+
+    total_gain_loss = total_value - total_invested
 
     return {
         "total_invested": total_invested,

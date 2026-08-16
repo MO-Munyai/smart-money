@@ -1,4 +1,5 @@
 internal/*
-pycache/*
-_pycache__/*
+*pycache/*
+*_pycache__/*
+*.pyc
 portfolio.db

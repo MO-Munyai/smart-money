@@ -98,7 +98,7 @@ if r.status_code == 200:
 
     # Metrics (safe access)
     total_invested = portfolio.get("total_invested", 0)
-    total_value = portfolio.get("total_value", 0)
+    total_value = portfolio.get("total_current_value", 0)
     total_gain_loss = portfolio.get("total_gain_loss", 0)
 
     col1, col2, col3 = st.columns(3)
