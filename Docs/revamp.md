@@ -99,19 +99,35 @@ Replace transaction form + portfolio dashboard with:
       (ticker, type, added_at), no persisted fundamentals. Landed as 4
       commits: model, schema, crud, then `/instruments` endpoints
       (POST validates the ticker resolves via live price before registering).
-- [ ] **Phase 3 — Backend API**: rebuild endpoints around instrument lookup/search
+- [x] **Phase 3 — Backend API**: rebuild endpoints around instrument lookup/search.
+      All 5 sub-tasks verified live (real yfinance calls, not just import checks),
+      then manually confirmed end-to-end by the user running backend+frontend.
+      Known open item: `compare` (3.5) doesn't check the registry like 3.2/3.3
+      do - it'll fetch/compare any resolvable ticker whether registered or not.
+      Left as-is; revisit if it should be registry-gated for consistency.
   - [x] 3.1 — `services/market.py`: add `get_price_history(ticker, period, interval)`
         (OHLC series, ZAR-normalized like `get_live_price`) — needed by 3.3
-  - [ ] 3.2 — `GET /instruments/{ticker}`: full live profile (fundamentals via
+  - [x] 3.2 — `GET /instruments/{ticker}`: full live profile (fundamentals via
         `fetch_asset_metadata` + live price), 404 if ticker isn't registered
-  - [ ] 3.3 — `GET /instruments/{ticker}/history?period=&interval=`: OHLC
+  - [x] 3.3 — `GET /instruments/{ticker}/history?period=&interval=`: OHLC
         series for charting, using 3.1
-  - [ ] 3.4 — `GET /instruments` (list): enrich each row with a batch-fetched
+  - [x] 3.4 — `GET /instruments` (list): enrich each row with a batch-fetched
         live price (`get_live_prices`) instead of returning bare registry rows
-  - [ ] 3.5 — `GET /instruments/compare?tickers=A,B,C`: side-by-side live
+  - [x] 3.5 — `GET /instruments/compare?tickers=A,B,C`: side-by-side live
         metrics for 2+ tickers (must be routed before 3.2's `{ticker}` path
         or FastAPI will treat "compare" as a ticker)
 - [ ] **Phase 4 — Frontend**: search/browse/detail UI
+  - [ ] 4.1 — Register-instrument form: ticker + type input, `POST /instruments`,
+        success/error feedback (mirrors the backend's 400/404 cases)
+  - [ ] 4.2 — Registry table: `GET /instruments`, dataframe with ticker, type,
+        live price, added_at
+  - [ ] 4.3 — Remove-instrument control: pick a row, `DELETE /instruments/{ticker}`
+  - [ ] 4.4 — Instrument detail view: select a ticker from the registry,
+        `GET /instruments/{ticker}`, show fundamentals + live price
+  - [ ] 4.5 — Price history chart: `GET /instruments/{ticker}/history` for the
+        selected instrument, plotly line/candlestick chart
+  - [ ] 4.6 — Comparison view: multi-select 2+ tickers, `GET /instruments/compare`,
+        side-by-side metrics table
 - [ ] **Phase 5 — Polish**: history/charting, refresh strategy, comparison view
 
 ## Decisions log
