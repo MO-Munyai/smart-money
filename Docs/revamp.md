@@ -28,10 +28,12 @@ to brainstorm, capture decisions, and track what's actually been done.
 
 ## What survives / evolves
 
-- `Asset` model -> becomes the **Instrument** registry. This is the thing that
-  gets richer, not thinner.
-- `services/market.py`: `get_live_price`, `fetch_asset_metadata` — keep, but
-  metadata fetch needs to branch by instrument type (see below).
+- `Asset` model -> replaced by the identity-only **Instrument** registry
+  (`models.py`, `schemas.py`, `crud.py`, `/instruments` endpoints — done in
+  Phase 2). No fundamentals persisted; see Data model sketch below.
+- `services/market.py`: `get_live_price` (now also used to validate a ticker
+  on registration), `get_live_prices`, `fetch_asset_metadata` (unused since
+  Phase 2, reserved for the Phase 3 detail-view endpoint).
 - `services/currency.py`: normalization still matters for cross-exchange comparison.
 - `Docs/Notes.MD` ticker suffix cheat sheet — still relevant, maybe surface in-app.
 
@@ -93,8 +95,10 @@ Replace transaction form + portfolio dashboard with:
       `services/market.py`, and the transaction form / table / portfolio
       dashboard sections from the frontend (now a placeholder page). Left
       `Asset` model + `/assets` endpoints as-is — that redesign is Phase 2.
-- [ ] **Phase 2 — Data model**: redesign Asset -> Instrument, add `type` +
-      type-specific fields, migrate/reset db
+- [x] **Phase 2 — Data model**: `Asset` -> identity-only `Instrument`
+      (ticker, type, added_at), no persisted fundamentals. Landed as 4
+      commits: model, schema, crud, then `/instruments` endpoints
+      (POST validates the ticker resolves via live price before registering).
 - [ ] **Phase 3 — Backend API**: rebuild endpoints around instrument lookup/search
 - [ ] **Phase 4 — Frontend**: search/browse/detail UI
 - [ ] **Phase 5 — Polish**: history/charting, refresh strategy, comparison view
