@@ -100,7 +100,7 @@ Replace transaction form + portfolio dashboard with:
       commits: model, schema, crud, then `/instruments` endpoints
       (POST validates the ticker resolves via live price before registering).
 - [ ] **Phase 3 — Backend API**: rebuild endpoints around instrument lookup/search
-  - [ ] 3.1 — `services/market.py`: add `get_price_history(ticker, period, interval)`
+  - [x] 3.1 — `services/market.py`: add `get_price_history(ticker, period, interval)`
         (OHLC series, ZAR-normalized like `get_live_price`) — needed by 3.3
   - [ ] 3.2 — `GET /instruments/{ticker}`: full live profile (fundamentals via
         `fetch_asset_metadata` + live price), 404 if ticker isn't registered
