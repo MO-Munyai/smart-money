@@ -1,45 +1,6 @@
 # Backend/schemas.py
-from pydantic import BaseModel, Field
-from datetime import date
+from pydantic import BaseModel
 from typing import Optional
-
-# -------------------------------
-# Transaction Schemas
-# -------------------------------
-class TransactionBase(BaseModel):
-    ticker: str = Field(..., example="AAPL")
-    quantity: float = Field(..., gt=0)
-    price: float = Field(..., gt=0)
-    type: str = Field(..., example="buy")  # buy or sell
-    date: date
-
-class TransactionCreate(TransactionBase):
-    pass
-
-class Transaction(TransactionBase):
-    id: int
-
-    class Config:
-        from_attributes = True
-
-
-# -------------------------------
-# Position Schemas
-# -------------------------------
-class PositionBase(BaseModel):
-    ticker: str
-    quantity: float
-    avg_cost: float
-
-class PositionCreate(PositionBase):
-    pass
-
-class Position(PositionBase):
-    id: int
-
-    class Config:
-        from_attributes = True
-
 
 # -------------------------------
 # Asset Schemas

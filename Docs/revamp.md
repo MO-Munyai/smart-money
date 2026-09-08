@@ -86,9 +86,13 @@ Replace transaction form + portfolio dashboard with:
 
 ## Execution phases
 
-- [ ] **Phase 0 — Brainstorm & scope** (this doc) — in progress
-- [ ] **Phase 1 — Strip the ledger**: remove Transaction/Position models,
-      portfolio endpoints, portfolio-related frontend sections
+- [x] **Phase 0 — Brainstorm & scope** (this doc)
+- [x] **Phase 1 — Strip the ledger**: removed Transaction/Position models,
+      `/transactions` and `/portfolio/*` endpoints, `services/portfolio.py`,
+      `services/analytics.py`, dead `calculate_portfolio_summary` in
+      `services/market.py`, and the transaction form / table / portfolio
+      dashboard sections from the frontend (now a placeholder page). Left
+      `Asset` model + `/assets` endpoints as-is — that redesign is Phase 2.
 - [ ] **Phase 2 — Data model**: redesign Asset -> Instrument, add `type` +
       type-specific fields, migrate/reset db
 - [ ] **Phase 3 — Backend API**: rebuild endpoints around instrument lookup/search

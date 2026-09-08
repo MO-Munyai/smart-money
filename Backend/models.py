@@ -1,16 +1,6 @@
-from sqlalchemy import Column, Integer, String, Float, Date
+from sqlalchemy import Column, Integer, String, Float
 from database import Base
 
-
-class Transaction(Base):
-    __tablename__ = "transactions"
-
-    id = Column(Integer, primary_key=True, index=True)
-    ticker = Column(String, index=True, nullable=False)
-    quantity = Column(Float, nullable=False)
-    price = Column(Float, nullable=False)
-    type = Column(String, nullable=False)  # buy or sell
-    date = Column(Date, nullable=False)
 
 class Asset(Base):
     __tablename__ = "assets"
@@ -26,11 +16,3 @@ class Asset(Base):
     beta = Column(Float)
     roe = Column(Float)
     dividend_yield = Column(Float)
-
-class Position(Base):
-    __tablename__ = "positions"
-
-    id = Column(Integer, primary_key=True)
-    ticker = Column(String, index=True)
-    quantity = Column(Float)
-    avg_cost = Column(Float)
