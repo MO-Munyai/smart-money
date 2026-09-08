@@ -48,6 +48,34 @@ def get_live_prices(tickers: list[str]):
     return prices
 
 
+def get_price_history(ticker: str, period: str = "6mo", interval: str = "1d"):
+    """
+    Fetches OHLC price history for a ticker, ZAR-normalized like get_live_price.
+    Returns a list of {date, open, high, low, close, volume} dicts, oldest first.
+    """
+    try:
+        stock = yf.Ticker(ticker)
+        data = stock.history(period=period, interval=interval)
+        if data.empty:
+            return []
+
+        currency = stock.info.get("currency", "ZAR")
+        history = []
+        for ts, row in data.iterrows():
+            history.append({
+                "date": ts.isoformat(),
+                "open": normalize_price(ticker, float(row["Open"]), currency),
+                "high": normalize_price(ticker, float(row["High"]), currency),
+                "low": normalize_price(ticker, float(row["Low"]), currency),
+                "close": normalize_price(ticker, float(row["Close"]), currency),
+                "volume": float(row["Volume"])
+            })
+        return history
+    except Exception as e:
+        print(f"Error fetching history for {ticker}: {e}")
+        return []
+
+
 def fetch_asset_metadata(ticker: str):
     """
     Fetches fundamental metadata for a given ticker from Yahoo Finance.
