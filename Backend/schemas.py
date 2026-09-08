@@ -7,10 +7,10 @@ from enum import Enum
 # Instrument Schemas
 # -------------------------------
 class InstrumentType(str, Enum):
-    stock = "stock"
-    etf = "etf"
-    crypto = "crypto"
-    index = "index"
+    stock = "Stock"
+    etf = "EFT"
+    crypto = "Crypto"
+    index = "Index"
 
 class InstrumentBase(BaseModel):
     ticker: str
