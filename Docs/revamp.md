@@ -119,7 +119,7 @@ Replace transaction form + portfolio dashboard with:
 - [ ] **Phase 4 — Frontend**: search/browse/detail UI
   - [ ] 4.1 — Register-instrument form: ticker + type input, `POST /instruments`,
         success/error feedback (mirrors the backend's 400/404 cases)
-  - [ ] 4.2 — Registry table: `GET /instruments`, dataframe with ticker, type,
+  - [x] 4.2 — Registry table: `GET /instruments`, dataframe with ticker, type,
         live price, added_at
   - [ ] 4.3 — Remove-instrument control: pick a row, `DELETE /instruments/{ticker}`
   - [ ] 4.4 — Instrument detail view: select a ticker from the registry,

@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+import pandas as pd
 
 API_URL = "http://127.0.0.1:8000"
 
@@ -34,3 +35,19 @@ with st.form("register_instrument"):
                 st.success(f"{ticker.upper()} registered")
             else:
                 st.error(r.json().get("detail", "Failed to register instrument"))
+
+# -----------------------------
+# Instrument Registry
+# -----------------------------
+st.header("📋 Instrument Registry")
+
+r = requests.get(f"{API_URL}/instruments")
+if r.status_code == 200:
+    instruments = r.json()
+    if instruments:
+        df = pd.DataFrame(instruments)
+        st.dataframe(df, width="stretch")
+    else:
+        st.info("No instruments registered yet")
+else:
+    st.error("Failed to load instrument registry")
