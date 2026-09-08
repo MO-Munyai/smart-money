@@ -1,27 +1,27 @@
 # Backend/schemas.py
 from pydantic import BaseModel
-from typing import Optional
+from datetime import datetime
+from enum import Enum
 
 # -------------------------------
-# Asset Schemas
+# Instrument Schemas
 # -------------------------------
-class AssetBase(BaseModel):
+class InstrumentType(str, Enum):
+    stock = "stock"
+    etf = "etf"
+    crypto = "crypto"
+    index = "index"
+
+class InstrumentBase(BaseModel):
     ticker: str
-    name: Optional[str] = None
-    sector: Optional[str] = None
-    industry: Optional[str] = None
-    country: Optional[str] = None
-    market_cap: Optional[float] = None
-    pe_ratio: Optional[float] = None
-    beta: Optional[float] = None
-    roe: Optional[float] = None
-    dividend_yield: Optional[float] = None
+    type: InstrumentType
 
-class AssetCreate(AssetBase):
+class InstrumentCreate(InstrumentBase):
     pass
 
-class Asset(AssetBase):
+class Instrument(InstrumentBase):
     id: int
+    added_at: datetime
 
     class Config:
         from_attributes = True
