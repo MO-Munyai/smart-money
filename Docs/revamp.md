@@ -147,15 +147,14 @@ Replace transaction form + portfolio dashboard with:
         or extended return shape) — `get_live_price` currently discards the
         native price/currency once it converts to ZAR, needed for 5.6's
         dual-currency display
-  - [ ] 5.5 — Backend: top-10-per-category ticker lists (stocks, ETFs, indices,
+  - [x] 5.5 — Backend: top-10-per-category ticker lists (stocks, ETFs, indices,
         crypto) + `GET /markets/overview` endpoint returning each with ZAR
         price, native price, native currency, and fx rate, grouped by
-        category. Per 5.7's findings: `yf.screen()` / `PREDEFINED_SCREENER_QUERIES`
-        actually works live and is viable for the stocks category (e.g.
-        `most_actives`, `day_gainers`); no crypto/ETF/index equivalent exists,
-        so those three categories still need a curated/static list. Decide
-        the stocks-category approach (screener vs. curated, for consistency)
-        when this task is picked up
+        category. Decided curated/static for all 4 categories (not screener
+        for stocks) - consistency across categories, since ETF/index/crypto
+        have no screener equivalent anyway; also avoids the screener call's
+        own latency/rate-limit exposure on every overview load. See decisions
+        log for the real performance work this task turned into.
   - [ ] 5.6 — Frontend: landing/default view rendering the 4 category tables
         from 5.5 (e.g. "AAPL — ZAR 5,058.74 / USD 230.10 / ZAR-USD 21.98"),
         shown by default ahead of/above the registry-driven sections
@@ -274,6 +273,30 @@ Replace transaction form + portfolio dashboard with:
   found" happens to default to "apply no conversion" - accidentally right,
   not intentionally. 5.9 will make that explicit rather than relying on the
   lookup failing usefully.
+- 2026-09-09: 5.9 done ahead of order - user hit the noisy `ZACZAR=X` 404 in
+  live server logs and asked to handle it. `get_price_breakdown` now treats
+  `ZAC` as `ZAR`-equivalent explicitly, skipping the doomed forex lookup.
+  Verified: no more `ZACZAR=X` error printed for `NPN.JO`/`CPI.JO`, same
+  correct output values, genuine foreign-currency conversion (`AAPL`,
+  `BTC-USD`) still works.
+- 2026-09-09: 5.5 - decided curated/static lists for all 4 categories
+  (screener only exists for stocks, and using it would diverge from the
+  other 3 categories' behavior anyway). Chose 10 well-known tickers each for
+  stocks/ETFs/indices/crypto; all 40 validated live before shipping.
+  Performance finding: naive implementation (reusing `get_live_price_detail`,
+  which calls `.info` for currency) took **57s** for the full 40-ticker set -
+  unacceptable for a landing page. Root cause: `.info` is the expensive part
+  (confirmed in 5.7's latency research), not `.history()`. Since this is a
+  *fixed* curated list (unlike user-registered instruments), hardcoded each
+  ticker's real quote currency (verified live, one-time) instead of looking
+  it up every request - cut it to **~11-12s**. Considered batching via
+  `yf.download()` (would be ~4s) but it produced NaN for 28/40 tickers in
+  this exact mixed-category batch (crypto + market-hours assets, the same
+  root cause 5.8 exists to fix) - didn't want to duplicate 5.8's fix ad-hoc
+  here before that task lands, so stayed with sequential fetches. Endpoint
+  is documented as slow-on-purpose (~10s+) rather than optimized further for
+  now; batching becomes a safe option once 5.8 is done. Verified end-to-end
+  through the real HTTP endpoint: 40/40 entries resolved, 0 errors, ~11s.
 - 2026-09-09: User reported the Instrument Registry section "failing" after
   4.4, backend logs showing NaN. The market.py NaN guard from 4.3 was already
   live and working (confirmed - `GET /instruments` returns 200 with `null`

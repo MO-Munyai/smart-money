@@ -144,6 +144,78 @@ def get_price_history(ticker: str, period: str = "6mo", interval: str = "1d"):
         return []
 
 
+# Curated top-10-per-category instruments for the default market overview
+# (5.5/5.6). yfinance has no working screener for ETF/index/crypto categories
+# (see Docs/yfinance-notes.md), so all four categories use a fixed list for
+# consistency rather than mixing a dynamic screener for stocks with curated
+# lists for the rest.
+#
+# Currency is hardcoded per ticker rather than looked up live: an
+# instrument's quote currency essentially never changes, and looking it up
+# via .info was the dominant cost of this endpoint - confirmed live, doing
+# it for all 40 tickers took ~57s vs ~12s once removed (get_live_price_detail
+# still looks currency up live for user-registered instruments, since those
+# aren't a fixed list). Verified against real yfinance data on 2026-09-09.
+# Price itself is always still fetched live, every request.
+CURATED_MARKETS = {
+    "stocks": [
+        ("AAPL", "USD"), ("MSFT", "USD"), ("GOOGL", "USD"), ("AMZN", "USD"),
+        ("NVDA", "USD"), ("META", "USD"), ("TSLA", "USD"), ("BRK-B", "USD"),
+        ("JPM", "USD"), ("V", "USD"),
+    ],
+    "etfs": [
+        ("SPY", "USD"), ("QQQ", "USD"), ("VOO", "USD"), ("VTI", "USD"),
+        ("IVV", "USD"), ("GLD", "USD"), ("VYM", "USD"), ("SCHD", "USD"),
+        ("ARKK", "USD"), ("XLK", "USD"),
+    ],
+    "indices": [
+        ("^GSPC", "USD"), ("^DJI", "USD"), ("^IXIC", "USD"), ("^RUT", "USD"),
+        ("^VIX", "USD"), ("^FTSE", "GBP"), ("^N225", "JPY"), ("^GDAXI", "EUR"),
+        ("^HSI", "HKD"), ("^STOXX50E", "EUR"),
+    ],
+    "crypto": [
+        ("BTC-USD", "USD"), ("ETH-USD", "USD"), ("SOL-USD", "USD"), ("BNB-USD", "USD"),
+        ("XRP-USD", "USD"), ("ADA-USD", "USD"), ("DOGE-USD", "USD"), ("AVAX-USD", "USD"),
+        ("DOT-USD", "USD"), ("LINK-USD", "USD"),
+    ],
+}
+
+
+def get_market_overview():
+    """
+    Live price breakdown (native price, currency, fx rate, ZAR price) for
+    the curated top-10 per category. Returns
+    {category: [{ticker, native_price, currency, fx_rate, zar_price}, ...]},
+    with {"ticker": ..., "error": "..."} entries for any ticker that failed.
+    """
+    overview = {}
+    for category, entries in CURATED_MARKETS.items():
+        results = []
+        for ticker, currency in entries:
+            try:
+                stock = yf.Ticker(ticker)
+                data = stock.history(period="1d")
+                if data.empty:
+                    results.append({"ticker": ticker, "error": "no data"})
+                    continue
+
+                raw_price = float(data["Close"].iloc[-1])
+                if math.isnan(raw_price):
+                    results.append({"ticker": ticker, "error": "no data"})
+                    continue
+
+                breakdown = get_price_breakdown(ticker, raw_price, currency)
+                results.append({"ticker": ticker, **breakdown})
+            except YFRateLimitError:
+                _record_rate_limit_hit(f"get_market_overview[{ticker}]")
+                results.append({"ticker": ticker, "error": "rate limited"})
+            except Exception as e:
+                print(f"Error fetching overview price for {ticker}: {e}")
+                results.append({"ticker": ticker, "error": "fetch failed"})
+        overview[category] = results
+    return overview
+
+
 def fetch_asset_metadata(ticker: str):
     """
     Fetches fundamental metadata for a given ticker from Yahoo Finance.

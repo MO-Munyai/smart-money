@@ -14,7 +14,7 @@ import crud
 from database import SessionLocal, engine
 from services.market import (
     get_live_price, get_live_prices, get_price_history, fetch_asset_metadata,
-    get_rate_limit_state
+    get_rate_limit_state, get_market_overview
 )
 
 # Create DB tables
@@ -108,6 +108,20 @@ def health(deep: bool = False, db: Session = Depends(get_db)):
             result["status"] = "degraded"
 
     return result
+
+
+# -------------------------------
+# Markets Overview
+# -------------------------------
+@app.get("/markets/overview")
+def markets_overview():
+    """
+    Live price breakdown for the curated top-10 stocks/ETFs/indices/crypto,
+    grouped by category. Powers the default landing view (5.6). Takes ~10s+
+    to fetch all 40 tickers live (no persistence) - callers should expect
+    that and treat it as a background/deferred load, not an instant one.
+    """
+    return get_market_overview()
 
 
 # -------------------------------
