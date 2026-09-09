@@ -146,113 +146,153 @@ def get_price_history(ticker: str, period: str = "6mo", interval: str = "1d"):
 
 # Curated top-10-per-category instruments for the default market overview
 # (5.5/5.6). yfinance has no working screener for ETF/index/crypto categories
-# (see Docs/yfinance-notes.md), so all four categories use a fixed list for
+# (see Docs/yfinance-notes.md), so all categories use a fixed list for
 # consistency rather than mixing a dynamic screener for stocks with curated
 # lists for the rest.
 #
-# Currency is hardcoded per ticker rather than looked up live: an
-# instrument's quote currency essentially never changes, and looking it up
-# via .info was the dominant cost of this endpoint - confirmed live, doing
-# it for all 40 tickers took ~57s vs ~12s once removed (get_live_price_detail
-# still looks currency up live for user-registered instruments, since those
-# aren't a fixed list). Verified against real yfinance data on 2026-09-09.
-# Price itself is always still fetched live, every request.
+# Currency AND display name are both hardcoded per ticker rather than looked
+# up live: an instrument's quote currency and name essentially never change,
+# and looking currency up via .info was the dominant cost of this endpoint -
+# confirmed live, doing it for the first 40 tickers took ~57s vs ~12s once
+# removed (get_live_price_detail still looks currency up live for
+# user-registered instruments, since those aren't a fixed list). All
+# tickers/currencies/names below verified against real yfinance data on
+# 2026-09-09. Price itself is always still fetched live, every request.
+#
+# Currency codes are the RAW Yahoo values (e.g. "ZAc", "GBp") - get_price_breakdown
+# (services/currency.py) handles minor-unit conversion generically now.
 CURATED_MARKETS = {
     "stocks": [
-        ("AAPL", "USD"), ("MSFT", "USD"), ("GOOGL", "USD"), ("AMZN", "USD"),
-        ("NVDA", "USD"), ("META", "USD"), ("TSLA", "USD"), ("BRK-B", "USD"),
-        ("JPM", "USD"), ("V", "USD"),
+        ("AAPL", "USD", "Apple Inc."), ("MSFT", "USD", "Microsoft Corporation"),
+        ("GOOGL", "USD", "Alphabet Inc."), ("AMZN", "USD", "Amazon.com, Inc."),
+        ("NVDA", "USD", "NVIDIA Corporation"), ("META", "USD", "Meta Platforms, Inc."),
+        ("TSLA", "USD", "Tesla, Inc."), ("BRK-B", "USD", "Berkshire Hathaway Inc."),
+        ("JPM", "USD", "JPMorgan Chase & Co."), ("V", "USD", "Visa Inc."),
     ],
     "etfs": [
-        ("SPY", "USD"), ("QQQ", "USD"), ("VOO", "USD"), ("VTI", "USD"),
-        ("IVV", "USD"), ("GLD", "USD"), ("VYM", "USD"), ("SCHD", "USD"),
-        ("ARKK", "USD"), ("XLK", "USD"),
+        ("SPY", "USD", "SPDR S&P 500 ETF Trust"), ("QQQ", "USD", "Invesco QQQ Trust"),
+        ("VOO", "USD", "Vanguard S&P 500 ETF"), ("VTI", "USD", "Vanguard Total Stock Market ETF"),
+        ("IVV", "USD", "iShares Core S&P 500 ETF"), ("GLD", "USD", "SPDR Gold Shares"),
+        ("VYM", "USD", "Vanguard High Dividend Yield ETF"), ("SCHD", "USD", "Schwab US Dividend Equity ETF"),
+        ("ARKK", "USD", "ARK Innovation ETF"), ("XLK", "USD", "Technology Select Sector SPDR Fund"),
     ],
     "indices": [
-        ("^GSPC", "USD"), ("^DJI", "USD"), ("^IXIC", "USD"), ("^RUT", "USD"),
-        ("^VIX", "USD"), ("^FTSE", "GBP"), ("^N225", "JPY"), ("^GDAXI", "EUR"),
-        ("^HSI", "HKD"), ("^STOXX50E", "EUR"),
+        ("^GSPC", "USD", "S&P 500"), ("^DJI", "USD", "Dow Jones Industrial Average"),
+        ("^IXIC", "USD", "NASDAQ Composite"), ("^RUT", "USD", "Russell 2000"),
+        ("^VIX", "USD", "CBOE Volatility Index"), ("^FTSE", "GBP", "FTSE 100"),
+        ("^N225", "JPY", "Nikkei 225"), ("^GDAXI", "EUR", "DAX"),
+        ("^HSI", "HKD", "Hang Seng Index"), ("^STOXX50E", "EUR", "EURO STOXX 50"),
     ],
     "crypto": [
-        ("BTC-USD", "USD"), ("ETH-USD", "USD"), ("SOL-USD", "USD"), ("BNB-USD", "USD"),
-        ("XRP-USD", "USD"), ("ADA-USD", "USD"), ("DOGE-USD", "USD"), ("AVAX-USD", "USD"),
-        ("DOT-USD", "USD"), ("LINK-USD", "USD"),
+        ("BTC-USD", "USD", "Bitcoin"), ("ETH-USD", "USD", "Ethereum"),
+        ("SOL-USD", "USD", "Solana"), ("BNB-USD", "USD", "BNB"),
+        ("XRP-USD", "USD", "XRP"), ("ADA-USD", "USD", "Cardano"),
+        ("DOGE-USD", "USD", "Dogecoin"), ("AVAX-USD", "USD", "Avalanche"),
+        ("DOT-USD", "USD", "Polkadot"), ("LINK-USD", "USD", "Chainlink"),
     ],
 }
 
 # Country/market groupings for the same overview. "US" reuses CURATED_MARKETS
 # ["stocks"] verbatim rather than duplicating it, so those 10 tickers are
-# only ever fetched once per overview call. South Africa has no overlap with
-# any type-based list yet, so it's fetched separately - ranked by real
-# market cap, confirmed live on 2026-09-09 (includes JSE-listed dual/foreign
-# names like BHP Group and Richemont, consistent with how "JSE Top 40"-style
-# lists are normally presented, not just SA-domiciled companies).
+# only ever fetched once per overview call. The other four markets have no
+# overlap with any type-based list, so they're fetched separately - each
+# ranked by real market cap (or, for Australia, well-known ASX blue-chip
+# ranking - Yahoo's marketCap field was missing for half the candidates),
+# confirmed live on 2026-09-09. South Africa and UK include dual/foreign-listed
+# names (BHP Group, Richemont on the JSE; Shell, Unilever on the LSE),
+# consistent with how "top 40"-style local-market lists are normally
+# presented, not filtered to only domestically-domiciled companies.
 CURATED_COUNTRIES = {
-    "US": [t for t, _ in CURATED_MARKETS["stocks"]],
+    "US": [(t, c, n) for t, c, n in CURATED_MARKETS["stocks"]],
     "South Africa": [
-        "BHG.JO", "CFR.JO", "PRX.JO", "AGL.JO", "NPN.JO",
-        "CPI.JO", "FSR.JO", "SBK.JO", "MTN.JO", "VOD.JO",
+        ("BHG.JO", "ZAc", "BHP Group Limited"), ("CFR.JO", "ZAc", "Compagnie Financiere Richemont"),
+        ("PRX.JO", "ZAc", "Prosus N.V."), ("AGL.JO", "ZAc", "Anglo American plc"),
+        ("NPN.JO", "ZAc", "Naspers Limited"), ("CPI.JO", "ZAc", "Capitec Bank Holdings"),
+        ("FSR.JO", "ZAc", "FirstRand Limited"), ("SBK.JO", "ZAc", "Standard Bank Group"),
+        ("MTN.JO", "ZAc", "MTN Group Limited"), ("VOD.JO", "ZAc", "Vodacom Group Limited"),
+    ],
+    "United Kingdom": [
+        ("AZN.L", "GBp", "AstraZeneca PLC"), ("SHEL.L", "GBp", "Shell PLC"),
+        ("HSBA.L", "GBp", "HSBC Holdings PLC"), ("ULVR.L", "GBp", "Unilever PLC"),
+        ("BP.L", "GBp", "BP PLC"), ("GSK.L", "GBp", "GSK PLC"),
+        ("RIO.L", "GBp", "Rio Tinto PLC"), ("DGE.L", "GBp", "Diageo PLC"),
+        ("REL.L", "GBp", "RELX PLC"), ("BATS.L", "GBp", "British American Tobacco PLC"),
+    ],
+    "Europe": [
+        ("ASML.AS", "EUR", "ASML Holding N.V."), ("MC.PA", "EUR", "LVMH"),
+        ("NESN.SW", "CHF", "Nestle S.A."), ("OR.PA", "EUR", "L'Oreal"),
+        ("SIE.DE", "EUR", "Siemens AG"), ("TTE.PA", "EUR", "TotalEnergies SE"),
+        ("SAN.PA", "EUR", "Sanofi"), ("RMS.PA", "EUR", "Hermes International"),
+        ("SAP.DE", "EUR", "SAP SE"), ("NOVO-B.CO", "DKK", "Novo Nordisk A/S"),
+    ],
+    "Australia": [
+        ("BHP.AX", "AUD", "BHP Group"), ("CBA.AX", "AUD", "Commonwealth Bank of Australia"),
+        ("CSL.AX", "AUD", "CSL Limited"), ("NAB.AX", "AUD", "National Australia Bank"),
+        ("WBC.AX", "AUD", "Westpac Banking Corporation"), ("ANZ.AX", "AUD", "ANZ Group Holdings"),
+        ("WES.AX", "AUD", "Wesfarmers Limited"), ("MQG.AX", "AUD", "Macquarie Group"),
+        ("WOW.AX", "AUD", "Woolworths Group"), ("TLS.AX", "AUD", "Telstra Group"),
     ],
 }
-# Currency for the South Africa list only (US reuses CURATED_MARKETS'
-# currencies via the ticker lookup below) - all confirmed "ZAc" live.
-_SOUTH_AFRICA_CURRENCY = "ZAc"
 
 
-def _fetch_curated_entry(ticker: str, currency: str):
+def _fetch_curated_entry(ticker: str, currency: str, name: str):
     """
     Live price + conversion breakdown for one curated ticker, with the
-    same NaN/error handling as the rest of services/market.py. Currency is
-    passed in (hardcoded per curated ticker, verified live) rather than
-    looked up via .info - see CURATED_MARKETS' comment for why.
+    same NaN/error handling as the rest of services/market.py. Currency and
+    name are passed in (hardcoded per curated ticker, verified live) rather
+    than looked up via .info - see CURATED_MARKETS' comment for why.
     """
     try:
         stock = yf.Ticker(ticker)
         data = stock.history(period="1d")
         if data.empty:
-            return {"ticker": ticker, "error": "no data"}
+            return {"ticker": ticker, "name": name, "error": "no data"}
 
         raw_price = float(data["Close"].iloc[-1])
         if math.isnan(raw_price):
-            return {"ticker": ticker, "error": "no data"}
+            return {"ticker": ticker, "name": name, "error": "no data"}
 
         breakdown = get_price_breakdown(ticker, raw_price, currency)
-        return {"ticker": ticker, **breakdown}
+        return {"ticker": ticker, "name": name, **breakdown}
     except YFRateLimitError:
         _record_rate_limit_hit(f"get_market_overview[{ticker}]")
-        return {"ticker": ticker, "error": "rate limited"}
+        return {"ticker": ticker, "name": name, "error": "rate limited"}
     except Exception as e:
         print(f"Error fetching overview price for {ticker}: {e}")
-        return {"ticker": ticker, "error": "fetch failed"}
+        return {"ticker": ticker, "name": name, "error": "fetch failed"}
 
 
 def get_market_overview():
     """
-    Live price breakdown (native price, currency, fx rate, ZAR price) for
-    the curated top-10 lists, grouped two ways: by instrument type
-    (stocks/etfs/indices/crypto) and by country/market (US, South Africa).
-    Returns {"by_type": {...}, "by_country": {...}}, each entry either
-    {ticker, native_price, currency, fx_rate, zar_price} or
-    {ticker, error} if that ticker failed.
+    Live price breakdown (name, native price, currency, fx rate, ZAR price)
+    for the curated top-10 lists, grouped two ways: by instrument type
+    (stocks/etfs/indices/crypto) and by country/market (US, South Africa,
+    United Kingdom, Europe, Australia). Returns
+    {"by_type": {...}, "by_country": {...}}, each entry either
+    {ticker, name, native_price, currency, fx_rate, zar_price} or
+    {ticker, name, error} if that ticker failed.
     """
     by_type = {}
     fetched_by_ticker = {}
     for category, entries in CURATED_MARKETS.items():
         results = []
-        for ticker, currency in entries:
-            entry = _fetch_curated_entry(ticker, currency)
+        for ticker, currency, name in entries:
+            entry = _fetch_curated_entry(ticker, currency, name)
             fetched_by_ticker[ticker] = entry
             results.append(entry)
         by_type[category] = results
 
     by_country = {
         # Already fetched above as CURATED_MARKETS["stocks"] - reuse, don't refetch.
-        "US": [fetched_by_ticker[ticker] for ticker in CURATED_COUNTRIES["US"]],
-        "South Africa": [
-            _fetch_curated_entry(ticker, _SOUTH_AFRICA_CURRENCY)
-            for ticker in CURATED_COUNTRIES["South Africa"]
-        ],
+        "US": [fetched_by_ticker[ticker] for ticker, _, _ in CURATED_COUNTRIES["US"]],
     }
+    for country, entries in CURATED_COUNTRIES.items():
+        if country == "US":
+            continue
+        by_country[country] = [
+            _fetch_curated_entry(ticker, currency, name)
+            for ticker, currency, name in entries
+        ]
 
     return {"by_type": by_type, "by_country": by_country}
 

@@ -8,8 +8,8 @@ st.title("🌍 Markets Overview")
 
 st.caption(
     "Live top-10 lists, always fetched fresh (nothing is stored). "
-    "This pulls ~50 tickers from Yahoo Finance in one go, so it can take "
-    "15-20 seconds to load."
+    "This pulls ~80 tickers from Yahoo Finance in one go, so it can take "
+    "25-35 seconds to load."
 )
 
 
@@ -18,12 +18,14 @@ def entries_to_df(entries):
     for e in entries:
         if "error" in e:
             rows.append({
-                "Ticker": e["ticker"], "Native Price": "N/A", "Currency": "N/A",
+                "Ticker": e["ticker"], "Name": e.get("name", "N/A"),
+                "Native Price": "N/A", "Currency": "N/A",
                 "FX Rate (-> ZAR)": "N/A", "ZAR Price": e["error"]
             })
         else:
             rows.append({
                 "Ticker": e["ticker"],
+                "Name": e.get("name", "N/A"),
                 "Native Price": round(e["native_price"], 2),
                 "Currency": e["currency"],
                 "FX Rate (-> ZAR)": round(e["fx_rate"], 4) if e["fx_rate"] is not None else "1:1 (ZAR-equivalent)",
@@ -36,9 +38,9 @@ if st.button("🔄 Load / Refresh Markets Overview"):
     st.session_state["markets_overview_loaded"] = True
 
 if not st.session_state.get("markets_overview_loaded"):
-    st.info("Click the button above to fetch live market data (not loaded automatically, since it's a ~50-ticker live fetch).")
+    st.info("Click the button above to fetch live market data (not loaded automatically, since it's an ~80-ticker live fetch).")
 else:
-    with st.spinner("Fetching ~50 tickers live from Yahoo Finance..."):
+    with st.spinner("Fetching ~80 tickers live from Yahoo Finance..."):
         r, err = api_request("GET", f"{API_URL}/markets/overview", timeout=45)
 
     if err:

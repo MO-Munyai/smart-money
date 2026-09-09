@@ -329,6 +329,29 @@ Replace transaction form + portfolio dashboard with:
   DataFrame-building logic against real live data (not just that it
   doesn't crash) - output matches exactly what was intended, and all three
   pages (main, Admin, Markets) confirmed loading with no server errors.
+- 2026-09-09: User asked for a Name column (tickers alone aren't memorable)
+  and 3 more `by_country` markets including Europe and Australia. Added
+  United Kingdom as the third, since `^FTSE` already existed as an index but
+  no UK single-stock list did. Verifying this surfaced a real bug before it
+  shipped: LSE stocks are quoted in pence (`GBp`), the exact same
+  minor-unit-currency pattern as `ZAc` for the JSE - generalized the fix in
+  `services/currency.py` (`MINOR_UNIT_CURRENCIES` lookup: `ZAc`->`ZAR`,
+  `GBp`/`GBX`->`GBP`) instead of the old ticker-suffix-based `.JO` check,
+  since the new logic covers any market Yahoo quotes this way, not just
+  JSE/LSE. Verified no regression on existing tickers, and that it's an
+  improvement: South African `currency` field now correctly reports `"ZAR"`
+  instead of the cryptic `"ZAc"`. Verified GBp math directly: AZN.L raw 11876
+  pence -> 118.76 GBP -> correct ZAR conversion.
+  Names and currencies hardcoded per curated ticker (same reasoning as
+  5.5 - fixed list, .info lookup is the expensive part), verified live for
+  all 80 tickers before shipping, including picking Europe (ASML.AS, LVMH,
+  Nestle, L'Oreal, Siemens, TotalEnergies, Sanofi, Hermes, SAP.DE, Novo
+  Nordisk - deliberately using native EUR/CHF/DKK listings, not USD ADRs,
+  since the point is showing multi-currency conversion) and Australia (ASX
+  top 10 by well-known ranking, Yahoo's marketCap field was missing for half
+  the candidates so couldn't rank by that). Total unique tickers per overview
+  call: 80 (US still reuses stocks' fetch). Verified end-to-end: 90 total
+  entries (with US's 10 reused) across all 9 groups, 0 errors, ~30s.
 - 2026-09-09: User reported the Instrument Registry section "failing" after
   4.4, backend logs showing NaN. The market.py NaN guard from 4.3 was already
   live and working (confirmed - `GET /instruments` returns 200 with `null`
