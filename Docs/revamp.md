@@ -140,7 +140,7 @@ Replace transaction form + portfolio dashboard with:
         from "ticker doesn't exist" or any other failure
   - [x] 5.2 — Backend: `GET /health` endpoint exposing app status + the
         rate-limit stats from 5.1
-  - [ ] 5.3 — Frontend: new Admin page/section rendering `/health` (rate-limit
+  - [x] 5.3 — Frontend: new Admin page/section rendering `/health` (rate-limit
         hit count/last-hit-time now; room for more admin info later)
   - [ ] 5.4 — `services/market.py`: expose native price + currency code + the
         fx rate used alongside the existing ZAR-normalized price (new function
@@ -246,6 +246,20 @@ Replace transaction form + portfolio dashboard with:
   market data isn't reachable. Verified live: cheap mode fast with real
   instrument count (5) and process stats (137MB), deep mode's yfinance
   round-trip measured at ~2.6s, consistent with earlier latency research.
+- 2026-09-09: Built 5.3 as a real Streamlit multi-page app rather than another
+  section on the main page - `Frontend/pages/Admin.py`, auto-discovered by
+  Streamlit's `pages/` convention. Extracted `api_request`/`error_detail`/
+  `safe_json`/`API_URL` out of `app.py` into a new shared `Frontend/api_client.py`
+  first, since each Streamlit page runs as its own script and can't share
+  in-file helpers otherwise - future pages should import from there rather
+  than redefining these. Admin page has a manual Refresh button and an
+  opt-in "Deep check" checkbox (maps to `/health?deep=true`) rather than
+  auto-polling, for the same rate-limit-exposure reason 5.2's deep mode is
+  opt-in. Verified the actual data-handling logic (not just that the routes
+  return 200) directly against the live backend - confirmed response keys
+  match what the page reads, `format_uptime()` converts correctly, and the
+  deep checkbox's boolean actually reaches FastAPI's `deep: bool` query
+  param correctly (`?deep=True` parses truthy, deep check fires for real).
 - 2026-09-09: User reported the Instrument Registry section "failing" after
   4.4, backend logs showing NaN. The market.py NaN guard from 4.3 was already
   live and working (confirmed - `GET /instruments` returns 200 with `null`
