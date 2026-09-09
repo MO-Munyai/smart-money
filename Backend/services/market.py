@@ -1,5 +1,6 @@
 # services/market.py
 
+import math
 import yfinance as yf
 from services.currency import normalize_price
 
@@ -14,8 +15,11 @@ def get_live_price(ticker: str):
         if data.empty:
             return None
 
-        currency = stock.info.get("currency", "ZAR")
         raw_price = float(data["Close"].iloc[-1])
+        if math.isnan(raw_price):
+            return None
+
+        currency = stock.info.get("currency", "ZAR")
         return normalize_price(ticker, raw_price, currency)
     except Exception:
         return None
@@ -35,6 +39,15 @@ def get_live_prices(tickers: list[str]):
             try:
                 if ticker in data.columns.levels[0]:
                     raw_price = float(data[ticker]["Close"].iloc[-1])
+                    # yf.download batches tickers against a shared trading-day
+                    # index - a ticker whose market was closed that day (e.g.
+                    # a public holiday) comes back NaN rather than absent.
+                    # NaN isn't JSON-serializable, so it has to become "price
+                    # unavailable" (None) instead of silently propagating and
+                    # 500ing the response.
+                    if math.isnan(raw_price):
+                        prices[ticker] = None
+                        continue
                     info = yf.Ticker(ticker).info
                     currency = info.get("currency", "ZAR")
                     prices[ticker] = normalize_price(ticker, raw_price, currency)
@@ -62,12 +75,18 @@ def get_price_history(ticker: str, period: str = "6mo", interval: str = "1d"):
         currency = stock.info.get("currency", "ZAR")
         history = []
         for ts, row in data.iterrows():
+            ohlc = [float(row["Open"]), float(row["High"]), float(row["Low"]), float(row["Close"])]
+            if any(math.isnan(v) for v in ohlc):
+                # Non-trading day for this ticker (e.g. a market holiday) -
+                # NaN isn't JSON-serializable, so skip the bar rather than
+                # let it through.
+                continue
             history.append({
                 "date": ts.isoformat(),
-                "open": normalize_price(ticker, float(row["Open"]), currency),
-                "high": normalize_price(ticker, float(row["High"]), currency),
-                "low": normalize_price(ticker, float(row["Low"]), currency),
-                "close": normalize_price(ticker, float(row["Close"]), currency),
+                "open": normalize_price(ticker, ohlc[0], currency),
+                "high": normalize_price(ticker, ohlc[1], currency),
+                "low": normalize_price(ticker, ohlc[2], currency),
+                "close": normalize_price(ticker, ohlc[3], currency),
                 "volume": float(row["Volume"])
             })
         return history

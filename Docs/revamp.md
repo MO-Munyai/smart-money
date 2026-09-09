@@ -117,18 +117,48 @@ Replace transaction form + portfolio dashboard with:
         metrics for 2+ tickers (must be routed before 3.2's `{ticker}` path
         or FastAPI will treat "compare" as a ticker)
 - [ ] **Phase 4 — Frontend**: search/browse/detail UI
-  - [ ] 4.1 — Register-instrument form: ticker + type input, `POST /instruments`,
+  - [x] 4.1 — Register-instrument form: ticker + type input, `POST /instruments`,
         success/error feedback (mirrors the backend's 400/404 cases)
   - [x] 4.2 — Registry table: `GET /instruments`, dataframe with ticker, type,
         live price, added_at
-  - [ ] 4.3 — Remove-instrument control: pick a row, `DELETE /instruments/{ticker}`
+  - [x] 4.3 — Remove-instrument control: pick a row, `DELETE /instruments/{ticker}`
+        (bonus bugfix along the way - see decisions log)
   - [ ] 4.4 — Instrument detail view: select a ticker from the registry,
         `GET /instruments/{ticker}`, show fundamentals + live price
   - [ ] 4.5 — Price history chart: `GET /instruments/{ticker}/history` for the
         selected instrument, plotly line/candlestick chart
   - [ ] 4.6 — Comparison view: multi-select 2+ tickers, `GET /instruments/compare`,
         side-by-side metrics table
-- [ ] **Phase 5 — Polish**: history/charting, refresh strategy, comparison view
+- [ ] **Phase 5 — Observability & Market Overview**: added mid-Phase-4 after the
+      rate-limit discussion. Inserted before the old Phase 5, which is renumbered
+      to Phase 6 below.
+  - [ ] 5.1 — `services/market.py`: catch `yfinance.exceptions.YFRateLimitError`
+        specifically (not just bare `except Exception`) in every fetch function
+        (`get_live_price`, `get_live_prices`, `get_price_history`,
+        `fetch_asset_metadata`); track a hit count + last-hit timestamp in
+        module state and log clearly so a rate-limit hit is distinguishable
+        from "ticker doesn't exist" or any other failure
+  - [ ] 5.2 — Backend: `GET /health` endpoint exposing app status + the
+        rate-limit stats from 5.1
+  - [ ] 5.3 — Frontend: new Admin page/section rendering `/health` (rate-limit
+        hit count/last-hit-time now; room for more admin info later)
+  - [ ] 5.4 — `services/market.py`: expose native price + currency code + the
+        fx rate used alongside the existing ZAR-normalized price (new function
+        or extended return shape) — `get_live_price` currently discards the
+        native price/currency once it converts to ZAR, needed for 5.6's
+        dual-currency display
+  - [ ] 5.5 — Backend: curated top-10-per-category ticker lists (stocks, ETFs,
+        indices, crypto) + `GET /markets/overview` endpoint returning each
+        with ZAR price, native price, native currency, and fx rate, grouped
+        by category. Open question: curated/static list (simple, no extra
+        rate-limit exposure) vs. a dynamic "top by market cap" screener
+        (yfinance's screening support is undocumented/inconsistent) — leaning
+        curated for now, revisit if it feels stale
+  - [ ] 5.6 — Frontend: landing/default view rendering the 4 category tables
+        from 5.5 (e.g. "AAPL — ZAR 5,058.74 / USD 230.10 / ZAR-USD 21.98"),
+        shown by default ahead of/above the registry-driven sections
+- [ ] **Phase 6 — Polish** *(renumbered from Phase 5)*: history/charting,
+      refresh strategy, comparison view
 
 ## Decisions log
 
@@ -140,3 +170,24 @@ Replace transaction form + portfolio dashboard with:
   "see everything" survives restarts. List view batches live price only;
   full fundamentals fetch is per-instrument on the detail view. No
   watchlist/filters yet — plain "see everything" list for now.
+- 2026-09-09: Added Phase 5 (Observability & Market Overview) mid-Phase-4,
+  inserted before the old Phase 5 which became Phase 6. Triggered by a
+  question about whether Yahoo rate-limiting could be monitored - answer:
+  no proactive headroom visibility (Yahoo doesn't expose that), so the fix is
+  distinguishing `YFRateLimitError` from generic failures and tracking/logging
+  it, surfaced on a new admin page. Same phase also covers a new
+  default-landing-page requirement: top 10 stocks/ETFs/indices/crypto shown
+  with both ZAR and native-currency price plus the fx rate used.
+- 2026-09-09: Bug found while testing 4.3 - `GET /instruments` 500'd
+  ("Out of range float values are not JSON compliant: nan"). Root cause:
+  `yf.download`'s batched multi-ticker mode returns NaN for a ticker's Close
+  when its market didn't trade that day (e.g. AAPL/MSFT vs a JSE ticker in
+  the same batch); `get_live_prices` never checked for NaN, so it flowed
+  straight into the JSON response and crashed serialization. Fixed by
+  NaN-guarding `get_live_price`, `get_live_prices`, and `get_price_history`
+  in `services/market.py` (NaN -> `None` price / skipped history bar,
+  matching how "no data" is already handled elsewhere). Also observed the
+  batch path (`get_live_prices`) is noticeably less reliable than the
+  singular path (`get_live_price`) even for liquid tickers like AAPL/MSFT -
+  worth keeping an eye on alongside the Phase 5 rate-limit work, since it
+  may be the same underlying Yahoo throttling rather than a separate issue.

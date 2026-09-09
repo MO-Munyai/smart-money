@@ -47,6 +47,21 @@ if r.status_code == 200:
     if instruments:
         df = pd.DataFrame(instruments)
         st.dataframe(df, width="stretch")
+
+        tickers = [i["ticker"] for i in instruments]
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            ticker_to_remove = st.selectbox("Remove instrument", tickers)
+        with col2:
+            st.write("")
+            st.write("")
+            if st.button("Remove"):
+                d = requests.delete(f"{API_URL}/instruments/{ticker_to_remove}")
+                if d.status_code == 200:
+                    st.success(f"{ticker_to_remove} removed")
+                    st.rerun()
+                else:
+                    st.error(d.json().get("detail", "Failed to remove instrument"))
     else:
         st.info("No instruments registered yet")
 else:
