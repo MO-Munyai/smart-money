@@ -189,8 +189,38 @@ Replace transaction form + portfolio dashboard with:
         currently return a mostly-blank "profile" instead of a proper error.
         Use a better validity check (e.g. require `shortName`/`longName`/
         `regularMarketPrice` to be present).
-- [ ] **Phase 6 — Polish** *(renumbered from Phase 5)*: history/charting,
-      refresh strategy, comparison view
+- [ ] **Phase 6 — Polish** *(renumbered from Phase 5)*: original scope was
+      "history/charting, refresh strategy, comparison view" - the first and
+      third are already done (4.5, 4.6), so this is really just "refresh
+      strategy" plus whatever else counts as polish now. Broken down below.
+  - [x] 6.1 — Reconsider whether the Markets overview belongs on the actual
+        landing page (`app.py`). The original ask was "by default show top
+        10 stocks/ETFs/indices/crypto" - it shipped as a separate page
+        (`pages/Markets.py`) requiring navigation + a manual "Load" click,
+        justified at the time by ~17-30s latency. That's now ~5-10s after
+        5.5's optimization - worth revisiting whether it should auto-load
+        on the landing page instead, or stay opt-in. Flagging explicitly
+        since it's a real gap against original intent, not just a nice-to-have.
+        Decided (user): keep as a separate page, but auto-load with a 60s
+        cache rather than merge into `app.py` - see decisions log.
+  - [ ] 6.2 — Revisit the refresh/caching open question (from the Data
+        model sketch, still open) now that real rate-limit data exists from
+        Phase 5: a 40-request burst showed no throttling, so decide (and
+        implement, or explicitly decide against) a short-lived in-memory
+        cache for expensive endpoints like `/markets/overview` - informed
+        by evidence now instead of guessing upfront
+  - [ ] 6.3 — Loading-state polish on `app.py`'s registry/detail/history/
+        compare sections - only Admin and Markets have spinners today
+  - [x] 6.4 — Fix the `"EFT"` -> `"ETF"` typo in `InstrumentType`
+        (`schemas.py`) and the register-form selectbox (flagged back at 4.2,
+        never resolved - likely a typo, not intentional)
+  - [ ] 6.5 — Surface `Docs/Notes.MD`'s ticker-suffix cheat sheet in-app
+        (e.g. help text on the Register Instrument form) - noted as
+        "still relevant, maybe surface in-app" back in the Direction section,
+        never done
+  - [ ] 6.6 — Full end-to-end regression pass across the whole app (all 3
+        pages, every endpoint) now that a lot has changed since Phase 4's
+        last full walkthrough
 
 ## Decisions log
 
@@ -390,6 +420,28 @@ Replace transaction form + portfolio dashboard with:
   it, and `?tickers=ZZZZINVALID,ALSOFAKE` (all-invalid) now actually reaches
   the existing "No valid tickers found" 404 - a path that could never fire
   before this fix. **Phase 5 complete** - all 10 sub-tasks done.
+- 2026-09-09: Phase 6 kicked off with 6.4 and 6.1. 6.4: `"EFT"` -> `"ETF"` in
+  `InstrumentType` (`schemas.py`) and the register-form selectbox - checked
+  the local DB first, nothing registered used `"EFT"`, so no migration
+  needed. Verified live: registering with `"ETF"` works, the old `"EFT"`
+  value now correctly 422s.
+  6.1: raised a real tradeoff before implementing - merging Markets content
+  into `app.py` would mean every unrelated interaction on that page (the
+  register form, remove button, history interval dropdown) triggers a full
+  Streamlit rerun, which would re-fire the ~5-10s market fetch every time
+  without caching. Asked the user: keep Markets as its own page (auto-load +
+  60s `st.cache_data` cache) vs. promote it to be the actual landing page
+  (bigger restructure). User chose the former. Implemented `fetch_overview()`
+  wrapped in `@st.cache_data(ttl=60)`, caching only plain dict/str (not the
+  raw response object, which may not pickle cleanly), with a "Refresh Now"
+  button that calls `.clear()` + `st.rerun()` to force a fresh fetch.
+  Verified with Streamlit's own `AppTest` headless testing framework (not
+  guessable via curl - a plain HTTP GET only serves Streamlit's static
+  shell, the actual script runs over a browser-driven WebSocket session):
+  first run made a real fetch (6.1s), a second run within the cache window
+  made zero new backend calls and returned in 0.1s, and clicking "Refresh
+  Now" correctly triggered exactly one new fetch, bypassing the cache. No
+  exceptions in any run.
 - 2026-09-09: User reported the Instrument Registry section "failing" after
   4.4, backend logs showing NaN. The market.py NaN guard from 4.3 was already
   live and working (confirmed - `GET /instruments` returns 200 with `null`

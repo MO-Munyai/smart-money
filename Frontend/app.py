@@ -37,7 +37,7 @@ with st.form("register_instrument"):
     with col1:
         ticker = st.text_input("Ticker (e.g. AAPL, NPN.JO, BTC-USD)")
     with col2:
-        instrument_type = st.selectbox("Type", ["Stock", "EFT", "Crypto", "Index"])
+        instrument_type = st.selectbox("Type", ["Stock", "ETF", "Crypto", "Index"])
 
     submitted = st.form_submit_button("Register")
     if submitted:

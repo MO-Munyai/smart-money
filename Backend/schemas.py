@@ -8,7 +8,7 @@ from enum import Enum
 # -------------------------------
 class InstrumentType(str, Enum):
     stock = "Stock"
-    etf = "EFT"
+    etf = "ETF"
     crypto = "Crypto"
     index = "Index"
 
