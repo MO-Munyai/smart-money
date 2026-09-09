@@ -4,6 +4,19 @@ import pandas as pd
 
 API_URL = "http://127.0.0.1:8000"
 
+
+def error_detail(response, fallback):
+    """
+    Safely pulls a {"detail": ...} message out of a failed response.
+    FastAPI's default handler returns plain text (not JSON) for unhandled
+    server errors (e.g. a 500), so response.json() itself can raise - this
+    falls back to the raw text, or the given fallback, instead of crashing.
+    """
+    try:
+        return response.json().get("detail", fallback)
+    except ValueError:
+        return response.text or fallback
+
 # -----------------------------
 # Page Config
 # -----------------------------
@@ -34,7 +47,7 @@ with st.form("register_instrument"):
             if r.status_code == 200:
                 st.success(f"{ticker.upper()} registered")
             else:
-                st.error(r.json().get("detail", "Failed to register instrument"))
+                st.error(error_detail(r, "Failed to register instrument"))
 
 # -----------------------------
 # Instrument Registry
@@ -43,8 +56,15 @@ st.header("📋 Instrument Registry")
 
 r = requests.get(f"{API_URL}/instruments")
 if r.status_code == 200:
-    instruments = r.json()
-    if instruments:
+    try:
+        instruments = r.json()
+    except ValueError:
+        st.error("Instrument registry returned an unreadable response")
+        instruments = None
+
+    if instruments is None:
+        pass  # error already shown above
+    elif instruments:
         df = pd.DataFrame(instruments)
         st.dataframe(df, width="stretch")
 
@@ -61,7 +81,7 @@ if r.status_code == 200:
                     st.success(f"{ticker_to_remove} removed")
                     st.rerun()
                 else:
-                    st.error(d.json().get("detail", "Failed to remove instrument"))
+                    st.error(error_detail(d, "Failed to remove instrument"))
         # -----------------------------
         # Instrument Detail
         # -----------------------------
@@ -89,7 +109,7 @@ if r.status_code == 200:
                 "Added": detail.get("added_at")
             }]))
         else:
-            st.error(d.json().get("detail", "Failed to load instrument detail"))
+            st.error(error_detail(d, "Failed to load instrument detail"))
     else:
         st.info("No instruments registered yet")
 else:

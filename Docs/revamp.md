@@ -235,3 +235,15 @@ Replace transaction form + portfolio dashboard with:
   Screener API (`yf.screen()`) confirmed working, revises 5.5's stocks-category
   approach from "curated only" to "screener viable for stocks, curated still
   needed for ETF/index/crypto."
+- 2026-09-09: User reported the Instrument Registry section "failing" after
+  4.4, backend logs showing NaN. The market.py NaN guard from 4.3 was already
+  live and working (confirmed - `GET /instruments` returns 200 with `null`
+  prices, not a 500). Real bug found: `Frontend/app.py`'s error branches
+  called `response.json()` unguarded - FastAPI's default handler returns
+  **plain text**, not JSON, for an unhandled exception, so `.json()` itself
+  raised and crashed the whole Streamlit page with an unrelated
+  `JSONDecodeError`, on top of whatever the original error was. Fixed with a
+  shared `error_detail()` helper (falls back to `.text` when `.json()`
+  fails) used at all four `.json()`-on-error call sites, plus guarding the
+  registry list's own `r.json()` parse. Not tied to a specific phase task -
+  logged here since it's a standalone frontend robustness fix.
