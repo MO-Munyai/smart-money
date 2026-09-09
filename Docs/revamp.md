@@ -247,3 +247,23 @@ Replace transaction form + portfolio dashboard with:
   fails) used at all four `.json()`-on-error call sites, plus guarding the
   registry list's own `r.json()` parse. Not tied to a specific phase task -
   logged here since it's a standalone frontend robustness fix.
+- 2026-09-09: User asked for blanket error handling, backend and frontend,
+  everywhere something can break. Backend: rather than wrapping every
+  endpoint body individually, added one global `@app.exception_handler(Exception)`
+  in `main.py` - catches anything not already an `HTTPException` (e.g. a DB
+  error) and returns proper `{"detail": ...}` JSON instead of FastAPI's
+  default plain-text 500. This also closes the loop on the earlier
+  `response.json()` frontend crash from the other direction - even without
+  the frontend's `error_detail()` fallback, the backend now never sends a
+  non-JSON error body in the first place. Verified: existing 404/400
+  `HTTPException` responses unaffected, and a simulated unhandled exception
+  returns clean JSON. Frontend half done too: added `api_request()` wrapping
+  every `requests.*` call in `app.py` against `requests.exceptions.RequestException`
+  (connection refused, timeout, DNS failure) - the case `error_detail()`
+  didn't cover, since that only handles "got a response but it errored," not
+  "never got a response at all." Also added `safe_json()` for response bodies
+  on the success path. Verified both branches directly: pointed at an
+  unreachable port -> `(None, "Could not reach backend: ...")` instead of
+  raising; pointed at the real running backend -> normal 200 response.
+  Between this and the backend's global handler, every network/parse boundary
+  in both frontend and backend now degrades to a message instead of crashing.

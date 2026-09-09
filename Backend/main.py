@@ -1,5 +1,6 @@
 # Backend/main.py
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 import models
@@ -12,6 +13,16 @@ from services.market import get_live_price, get_live_prices, get_price_history, 
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="SmartMoney v0.3")
+
+
+# Catches anything not already turned into an HTTPException below (e.g. a DB
+# error) so it comes back as {"detail": ...} JSON instead of FastAPI's
+# default plain-text 500 - which broke the frontend's response.json() calls
+# even after the underlying bug (services/market.py NaN) was already fixed.
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    print(f"Unhandled error on {request.method} {request.url.path}: {exc}")
+    return JSONResponse(status_code=500, content={"detail": f"Internal error: {exc}"})
 
 # Dependency to get DB session
 def get_db():

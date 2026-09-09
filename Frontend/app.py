@@ -5,6 +5,19 @@ import pandas as pd
 API_URL = "http://127.0.0.1:8000"
 
 
+def api_request(method, url, **kwargs):
+    """
+    Wraps a requests call so a fully unreachable backend (connection refused,
+    timeout, DNS failure, etc.) degrades to (None, message) instead of
+    crashing the page. Distinct from error_detail() below, which handles the
+    separate case of "got a response back, but it was an error".
+    """
+    try:
+        return requests.request(method, url, timeout=15, **kwargs), None
+    except requests.exceptions.RequestException as e:
+        return None, f"Could not reach backend: {e}"
+
+
 def error_detail(response, fallback):
     """
     Safely pulls a {"detail": ...} message out of a failed response.
@@ -16,6 +29,15 @@ def error_detail(response, fallback):
         return response.json().get("detail", fallback)
     except ValueError:
         return response.text or fallback
+
+
+def safe_json(response, fallback=None):
+    """Parses a response body as JSON, returning fallback instead of raising if it isn't."""
+    try:
+        return response.json()
+    except ValueError:
+        return fallback
+
 
 # -----------------------------
 # Page Config
@@ -40,11 +62,13 @@ with st.form("register_instrument"):
         if not ticker.strip():
             st.error("Enter a ticker first")
         else:
-            r = requests.post(
-                f"{API_URL}/instruments",
+            r, err = api_request(
+                "POST", f"{API_URL}/instruments",
                 json={"ticker": ticker.strip(), "type": instrument_type}
             )
-            if r.status_code == 200:
+            if err:
+                st.error(err)
+            elif r.status_code == 200:
                 st.success(f"{ticker.upper()} registered")
             else:
                 st.error(error_detail(r, "Failed to register instrument"))
@@ -54,16 +78,15 @@ with st.form("register_instrument"):
 # -----------------------------
 st.header("📋 Instrument Registry")
 
-r = requests.get(f"{API_URL}/instruments")
-if r.status_code == 200:
-    try:
-        instruments = r.json()
-    except ValueError:
-        st.error("Instrument registry returned an unreadable response")
-        instruments = None
-
+r, err = api_request("GET", f"{API_URL}/instruments")
+if err:
+    st.error(err)
+elif r.status_code != 200:
+    st.error(error_detail(r, "Failed to load instrument registry"))
+else:
+    instruments = safe_json(r)
     if instruments is None:
-        pass  # error already shown above
+        st.error("Instrument registry returned an unreadable response")
     elif instruments:
         df = pd.DataFrame(instruments)
         st.dataframe(df, width="stretch")
@@ -76,41 +99,46 @@ if r.status_code == 200:
             st.write("")
             st.write("")
             if st.button("Remove"):
-                d = requests.delete(f"{API_URL}/instruments/{ticker_to_remove}")
-                if d.status_code == 200:
+                d, derr = api_request("DELETE", f"{API_URL}/instruments/{ticker_to_remove}")
+                if derr:
+                    st.error(derr)
+                elif d.status_code == 200:
                     st.success(f"{ticker_to_remove} removed")
                     st.rerun()
                 else:
                     st.error(error_detail(d, "Failed to remove instrument"))
+
         # -----------------------------
         # Instrument Detail
         # -----------------------------
         st.header("🔎 Instrument Detail")
 
         selected_ticker = st.selectbox("View instrument", tickers, key="detail_ticker")
-        d = requests.get(f"{API_URL}/instruments/{selected_ticker}")
-        if d.status_code == 200:
-            detail = d.json()
-
-            st.subheader(detail.get("name") or detail["ticker"])
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Live Price (ZAR)", f"R {detail['live_price']:.2f}" if detail.get("live_price") is not None else "N/A")
-            col2.metric("P/E Ratio", f"{detail['pe_ratio']:.2f}" if detail.get("pe_ratio") is not None else "N/A")
-            col3.metric("Beta", f"{detail['beta']:.2f}" if detail.get("beta") is not None else "N/A")
-            col4.metric("Dividend Yield", f"{detail['dividend_yield']:.2f}%" if detail.get("dividend_yield") is not None else "N/A")
-
-            st.table(pd.DataFrame([{
-                "Type": detail.get("type"),
-                "Sector": detail.get("sector") or "N/A",
-                "Industry": detail.get("industry") or "N/A",
-                "Country": detail.get("country") or "N/A",
-                "Market Cap": detail.get("market_cap") or "N/A",
-                "ROE": detail.get("roe"),
-                "Added": detail.get("added_at")
-            }]))
-        else:
+        d, derr = api_request("GET", f"{API_URL}/instruments/{selected_ticker}")
+        if derr:
+            st.error(derr)
+        elif d.status_code != 200:
             st.error(error_detail(d, "Failed to load instrument detail"))
+        else:
+            detail = safe_json(d)
+            if detail is None:
+                st.error("Instrument detail returned an unreadable response")
+            else:
+                st.subheader(detail.get("name") or detail["ticker"])
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("Live Price (ZAR)", f"R {detail['live_price']:.2f}" if detail.get("live_price") is not None else "N/A")
+                col2.metric("P/E Ratio", f"{detail['pe_ratio']:.2f}" if detail.get("pe_ratio") is not None else "N/A")
+                col3.metric("Beta", f"{detail['beta']:.2f}" if detail.get("beta") is not None else "N/A")
+                col4.metric("Dividend Yield", f"{detail['dividend_yield']:.2f}%" if detail.get("dividend_yield") is not None else "N/A")
+
+                st.table(pd.DataFrame([{
+                    "Type": detail.get("type"),
+                    "Sector": detail.get("sector") or "N/A",
+                    "Industry": detail.get("industry") or "N/A",
+                    "Country": detail.get("country") or "N/A",
+                    "Market Cap": detail.get("market_cap") or "N/A",
+                    "ROE": detail.get("roe"),
+                    "Added": detail.get("added_at")
+                }]))
     else:
         st.info("No instruments registered yet")
-else:
-    st.error("Failed to load instrument registry")
