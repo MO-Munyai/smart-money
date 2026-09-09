@@ -123,7 +123,7 @@ Replace transaction form + portfolio dashboard with:
         live price, added_at
   - [x] 4.3 — Remove-instrument control: pick a row, `DELETE /instruments/{ticker}`
         (bonus bugfix along the way - see decisions log)
-  - [ ] 4.4 — Instrument detail view: select a ticker from the registry,
+  - [x] 4.4 — Instrument detail view: select a ticker from the registry,
         `GET /instruments/{ticker}`, show fundamentals + live price
   - [ ] 4.5 — Price history chart: `GET /instruments/{ticker}/history` for the
         selected instrument, plotly line/candlestick chart
@@ -147,16 +147,45 @@ Replace transaction form + portfolio dashboard with:
         or extended return shape) — `get_live_price` currently discards the
         native price/currency once it converts to ZAR, needed for 5.6's
         dual-currency display
-  - [ ] 5.5 — Backend: curated top-10-per-category ticker lists (stocks, ETFs,
-        indices, crypto) + `GET /markets/overview` endpoint returning each
-        with ZAR price, native price, native currency, and fx rate, grouped
-        by category. Open question: curated/static list (simple, no extra
-        rate-limit exposure) vs. a dynamic "top by market cap" screener
-        (yfinance's screening support is undocumented/inconsistent) — leaning
-        curated for now, revisit if it feels stale
+  - [ ] 5.5 — Backend: top-10-per-category ticker lists (stocks, ETFs, indices,
+        crypto) + `GET /markets/overview` endpoint returning each with ZAR
+        price, native price, native currency, and fx rate, grouped by
+        category. Per 5.7's findings: `yf.screen()` / `PREDEFINED_SCREENER_QUERIES`
+        actually works live and is viable for the stocks category (e.g.
+        `most_actives`, `day_gainers`); no crypto/ETF/index equivalent exists,
+        so those three categories still need a curated/static list. Decide
+        the stocks-category approach (screener vs. curated, for consistency)
+        when this task is picked up
   - [ ] 5.6 — Frontend: landing/default view rendering the 4 category tables
         from 5.5 (e.g. "AAPL — ZAR 5,058.74 / USD 230.10 / ZAR-USD 21.98"),
         shown by default ahead of/above the registry-driven sections
+  - [x] 5.7 — yfinance deep-dive: comprehensive empirical research beyond our
+        current scope - latency (history/info/batch download), rate-limit
+        thresholds and recovery time, batch NaN + weekend/holiday semantics,
+        the `ZAC` vs `ZAR` currency quirk, per-instrument-type field coverage,
+        error taxonomy (`yfinance.exceptions`), and a capability inventory
+        (dividends/splits, earnings, options, financials, screener, etc.) so
+        we're not flying blind on an undocumented/scraped API. Written up as
+        `Docs/yfinance-notes.md`. Findings split into concrete fix tasks below.
+  - [ ] 5.8 — `get_live_prices`: replace the blind `.iloc[-1]` with
+        `dropna().iloc[-1]` per ticker (last non-NaN value in the fetched
+        window), guarding all-NaN -> `None`. Per 5.7: NOT a weekend/holiday
+        issue and does NOT need a wider window - `period="1d"` is already
+        sufficient once `.iloc[-1]` stops being trusted blindly; the NaN
+        comes from mixing 24/7 crypto with market-hours equities in one
+        batch call. No persistence involved either way.
+  - [ ] 5.9 — `services/currency.py` `normalize_price`: treat `ZAC` as
+        `ZAR`-equivalent (skip the forex lookup for it) instead of trying a
+        `ZACZAR=X` conversion that doesn't exist on Yahoo. Per 5.7 finding 3
+        - `ZAC` is just ZAR-in-cents, same relationship the `.JO` suffix
+        check already handles for the cents math.
+  - [ ] 5.10 — `fetch_asset_metadata`: fix the invalid-ticker check. Per 5.7's
+        bonus finding, `if not info` never fires for a bad/delisted ticker -
+        Yahoo returns a non-empty degenerate dict (`{'trailingPegRatio': None}`),
+        not an empty one - so `GET /instruments/{ticker}` and `/compare`
+        currently return a mostly-blank "profile" instead of a proper error.
+        Use a better validity check (e.g. require `shortName`/`longName`/
+        `regularMarketPrice` to be present).
 - [ ] **Phase 6 — Polish** *(renumbered from Phase 5)*: history/charting,
       refresh strategy, comparison view
 
@@ -191,3 +220,18 @@ Replace transaction form + portfolio dashboard with:
   singular path (`get_live_price`) even for liquid tickers like AAPL/MSFT -
   worth keeping an eye on alongside the Phase 5 rate-limit work, since it
   may be the same underlying Yahoo throttling rather than a separate issue.
+- 2026-09-09: 5.7's research (`Docs/yfinance-notes.md`) resolved the above -
+  it's NOT throttling and NOT a weekend/holiday gap. `period="1d"` singular
+  calls are reliable; the batch path's NaN is caused by mixing 24/7 crypto
+  with market-hours equities in one `yf.download()` call, which extends the
+  shared date index to include "today" - genuinely absent for equities that
+  haven't traded yet. Fix is `dropna().iloc[-1]` (5.8), not a wider window -
+  confirmed widening the window actually introduces a *new* NaN (the most
+  recent day's still-forming candle) rather than fixing anything. Also
+  confirmed the `ZAC` currency bug's mechanics (5.9) and found a bonus bug:
+  `fetch_asset_metadata`'s invalid-ticker check never fires because Yahoo
+  returns a non-empty degenerate dict for bad tickers, not an empty one
+  (5.10). Rate-limit burst test (40 requests) triggered no throttling.
+  Screener API (`yf.screen()`) confirmed working, revises 5.5's stocks-category
+  approach from "curated only" to "screener viable for stocks, curated still
+  needed for ETF/index/crypto."
