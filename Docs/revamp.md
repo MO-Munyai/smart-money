@@ -116,7 +116,7 @@ Replace transaction form + portfolio dashboard with:
   - [x] 3.5 — `GET /instruments/compare?tickers=A,B,C`: side-by-side live
         metrics for 2+ tickers (must be routed before 3.2's `{ticker}` path
         or FastAPI will treat "compare" as a ticker)
-- [ ] **Phase 4 — Frontend**: search/browse/detail UI
+- [x] **Phase 4 — Frontend**: search/browse/detail UI
   - [x] 4.1 — Register-instrument form: ticker + type input, `POST /instruments`,
         success/error feedback (mirrors the backend's 400/404 cases)
   - [x] 4.2 — Registry table: `GET /instruments`, dataframe with ticker, type,
@@ -127,7 +127,7 @@ Replace transaction form + portfolio dashboard with:
         `GET /instruments/{ticker}`, show fundamentals + live price
   - [x] 4.5 — Price history chart: `GET /instruments/{ticker}/history` for the
         selected instrument, plotly line/candlestick chart
-  - [ ] 4.6 — Comparison view: multi-select 2+ tickers, `GET /instruments/compare`,
+  - [x] 4.6 — Comparison view: multi-select 2+ tickers, `GET /instruments/compare`,
         side-by-side metrics table
 - [ ] **Phase 5 — Observability & Market Overview**: added mid-Phase-4 after the
       rate-limit discussion. Inserted before the old Phase 5, which is renumbered

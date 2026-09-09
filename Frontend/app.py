@@ -211,5 +211,36 @@ else:
                             st.plotly_chart(fig, use_container_width=True)
                         else:
                             st.info("No price history available for this period")
+
+        # -----------------------------
+        # Compare Instruments
+        # -----------------------------
+        st.header("⚖️ Compare Instruments")
+
+        compare_tickers = st.multiselect(
+            "Select 2 or more instruments to compare", tickers, key="compare_tickers"
+        )
+        if len(compare_tickers) < 2:
+            st.info("Select at least two instruments to compare")
+        else:
+            c, cerr = api_request(
+                "GET", f"{API_URL}/instruments/compare",
+                params={"tickers": ",".join(compare_tickers)}
+            )
+            if cerr:
+                st.error(cerr)
+            elif c.status_code != 200:
+                st.error(error_detail(c, "Failed to load comparison"))
+            else:
+                compare_payload = safe_json(c)
+                if compare_payload is None:
+                    st.error("Comparison returned an unreadable response")
+                else:
+                    compared = compare_payload.get("instruments", [])
+                    if compared:
+                        compare_df = pd.DataFrame(compared).set_index("ticker").T
+                        st.dataframe(compare_df, width="stretch")
+                    else:
+                        st.info("No valid data returned for the selected instruments")
     else:
         st.info("No instruments registered yet")
