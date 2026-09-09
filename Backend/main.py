@@ -118,9 +118,10 @@ def markets_overview():
     """
     Live price breakdown for curated top-10 lists, grouped two ways:
     by instrument type (stocks/ETFs/indices/crypto) and by country/market
-    (US, South Africa). Powers the default landing view (5.6). Takes ~15s+
-    to fetch (50 unique tickers live, no persistence) - callers should
-    expect that and treat it as a background/deferred load, not instant.
+    (US, South Africa, United Kingdom, Europe, Australia). Powers the
+    default landing view (5.6). ~80 unique tickers, one batched download
+    (no persistence) - typically 5-10s, but treat it as a background/
+    deferred load rather than assuming it's instant.
     """
     return get_market_overview()
 

@@ -77,16 +77,21 @@ def get_live_prices(tickers: list[str]):
         for ticker in tickers:
             try:
                 if ticker in data.columns.levels[0]:
-                    raw_price = float(data[ticker]["Close"].iloc[-1])
-                    # yf.download batches tickers against a shared trading-day
-                    # index - a ticker whose market was closed that day (e.g.
-                    # a public holiday) comes back NaN rather than absent.
-                    # NaN isn't JSON-serializable, so it has to become "price
-                    # unavailable" (None) instead of silently propagating and
-                    # 500ing the response.
-                    if math.isnan(raw_price):
+                    # Don't trust .iloc[-1] blindly: yf.download batches
+                    # tickers against a shared trading-day index, and mixing
+                    # a 24/7 asset (crypto) with market-hours ones extends
+                    # that index to include a day some tickers don't have
+                    # a real value for yet (NaN) - not a genuinely missing
+                    # day, just the most recent one. dropna() + take
+                    # whatever's left is the actual last known price.
+                    # Confirmed via the 5.7 research this is reliable at
+                    # period="1d" - no wider window needed, that would just
+                    # add more rows to drop for no extra correctness.
+                    close_col = data[ticker]["Close"].dropna()
+                    if close_col.empty:
                         prices[ticker] = None
                         continue
+                    raw_price = float(close_col.iloc[-1])
                     info = yf.Ticker(ticker).info
                     currency = info.get("currency", "ZAR")
                     prices[ticker] = normalize_price(ticker, raw_price, currency)
@@ -235,31 +240,71 @@ CURATED_COUNTRIES = {
 }
 
 
-def _fetch_curated_entry(ticker: str, currency: str, name: str):
+def _curated_ticker_index():
     """
-    Live price + conversion breakdown for one curated ticker, with the
-    same NaN/error handling as the rest of services/market.py. Currency and
-    name are passed in (hardcoded per curated ticker, verified live) rather
-    than looked up via .info - see CURATED_MARKETS' comment for why.
+    Flattens CURATED_MARKETS + CURATED_COUNTRIES into one
+    {ticker: (currency, name)} map, deduplicated - "US" is the same 10
+    tickers as CURATED_MARKETS["stocks"], so this has ~80 unique entries
+    even though the grouped views show 90 slots.
     """
+    index = {}
+    for entries in CURATED_MARKETS.values():
+        for ticker, currency, name in entries:
+            index[ticker] = (currency, name)
+    for country, entries in CURATED_COUNTRIES.items():
+        if country == "US":
+            continue
+        for ticker, currency, name in entries:
+            index[ticker] = (currency, name)
+    return index
+
+
+def _fetch_curated_batch():
+    """
+    One yf.download() call for every unique curated ticker across every
+    category/country, instead of one .history() call per ticker. Combines
+    5.8's dropna-based NaN handling (safe to batch mixed 24/7/market-hours
+    assets now) with 5.5's hardcoded currency/name (no per-ticker .info
+    calls) - cut the full curated set from ~30s to a few seconds.
+    Returns {ticker: {ticker, name, native_price, currency, fx_rate,
+    zar_price} or {ticker, name, error}}.
+    """
+    index = _curated_ticker_index()
+    tickers = list(index.keys())
+    results = {}
     try:
-        stock = yf.Ticker(ticker)
-        data = stock.history(period="1d")
-        if data.empty:
-            return {"ticker": ticker, "name": name, "error": "no data"}
-
-        raw_price = float(data["Close"].iloc[-1])
-        if math.isnan(raw_price):
-            return {"ticker": ticker, "name": name, "error": "no data"}
-
-        breakdown = get_price_breakdown(ticker, raw_price, currency)
-        return {"ticker": ticker, "name": name, **breakdown}
+        data = yf.download(" ".join(tickers), period="1d", group_by="ticker", threads=True)
+        for ticker in tickers:
+            currency, name = index[ticker]
+            try:
+                if ticker not in data.columns.levels[0]:
+                    results[ticker] = {"ticker": ticker, "name": name, "error": "no data"}
+                    continue
+                close_col = data[ticker]["Close"].dropna()
+                if close_col.empty:
+                    results[ticker] = {"ticker": ticker, "name": name, "error": "no data"}
+                    continue
+                raw_price = float(close_col.iloc[-1])
+                breakdown = get_price_breakdown(ticker, raw_price, currency)
+                results[ticker] = {"ticker": ticker, "name": name, **breakdown}
+            except YFRateLimitError:
+                _record_rate_limit_hit(f"get_market_overview[{ticker}]")
+                results[ticker] = {"ticker": ticker, "name": name, "error": "rate limited"}
+            except Exception as e:
+                print(f"Error fetching overview price for {ticker}: {e}")
+                results[ticker] = {"ticker": ticker, "name": name, "error": "fetch failed"}
     except YFRateLimitError:
-        _record_rate_limit_hit(f"get_market_overview[{ticker}]")
-        return {"ticker": ticker, "name": name, "error": "rate limited"}
+        _record_rate_limit_hit("get_market_overview[batch download]")
+        for ticker in tickers:
+            currency, name = index[ticker]
+            results[ticker] = {"ticker": ticker, "name": name, "error": "rate limited"}
     except Exception as e:
-        print(f"Error fetching overview price for {ticker}: {e}")
-        return {"ticker": ticker, "name": name, "error": "fetch failed"}
+        print(f"Error fetching curated batch: {e}")
+        for ticker in tickers:
+            currency, name = index[ticker]
+            results[ticker] = {"ticker": ticker, "name": name, "error": "fetch failed"}
+
+    return results
 
 
 def get_market_overview():
@@ -272,27 +317,16 @@ def get_market_overview():
     {ticker, name, native_price, currency, fx_rate, zar_price} or
     {ticker, name, error} if that ticker failed.
     """
-    by_type = {}
-    fetched_by_ticker = {}
-    for category, entries in CURATED_MARKETS.items():
-        results = []
-        for ticker, currency, name in entries:
-            entry = _fetch_curated_entry(ticker, currency, name)
-            fetched_by_ticker[ticker] = entry
-            results.append(entry)
-        by_type[category] = results
+    batch = _fetch_curated_batch()
 
-    by_country = {
-        # Already fetched above as CURATED_MARKETS["stocks"] - reuse, don't refetch.
-        "US": [fetched_by_ticker[ticker] for ticker, _, _ in CURATED_COUNTRIES["US"]],
+    by_type = {
+        category: [batch[ticker] for ticker, _, _ in entries]
+        for category, entries in CURATED_MARKETS.items()
     }
-    for country, entries in CURATED_COUNTRIES.items():
-        if country == "US":
-            continue
-        by_country[country] = [
-            _fetch_curated_entry(ticker, currency, name)
-            for ticker, currency, name in entries
-        ]
+    by_country = {
+        country: [batch[ticker] for ticker, _, _ in entries]
+        for country, entries in CURATED_COUNTRIES.items()
+    }
 
     return {"by_type": by_type, "by_country": by_country}
 

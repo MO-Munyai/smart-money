@@ -166,7 +166,7 @@ Replace transaction form + portfolio dashboard with:
         (dividends/splits, earnings, options, financials, screener, etc.) so
         we're not flying blind on an undocumented/scraped API. Written up as
         `Docs/yfinance-notes.md`. Findings split into concrete fix tasks below.
-  - [ ] 5.8 — `get_live_prices`: replace the blind `.iloc[-1]` with
+  - [x] 5.8 — `get_live_prices`: replace the blind `.iloc[-1]` with
         `dropna().iloc[-1]` per ticker (last non-NaN value in the fetched
         window), guarding all-NaN -> `None`. Per 5.7: NOT a weekend/holiday
         issue and does NOT need a wider window - `period="1d"` is already
@@ -352,6 +352,30 @@ Replace transaction form + portfolio dashboard with:
   the candidates so couldn't rank by that). Total unique tickers per overview
   call: 80 (US still reuses stocks' fetch). Verified end-to-end: 90 total
   entries (with US's 10 reused) across all 9 groups, 0 errors, ~30s.
+- 2026-09-09: 5.8 done - `get_live_prices` now does `data[ticker]["Close"].dropna()`
+  and takes whatever's left (`None` if that's empty) instead of blindly
+  trusting `.iloc[-1]`. Verified against the exact batch that originally
+  crashed `GET /instruments` (AAPL/MSFT/BTC-USD/NPN.JO - all 4 now resolve)
+  and the larger 40-ticker mixed batch from 5.5/5.7's research, which had
+  28/40 NaN under the old logic - now 40/40 resolve, 0 failures. Batching
+  for `/markets/overview` (mentioned as a follow-up option in 5.5) is now
+  technically safe to revisit, though `get_live_prices` still does a
+  per-ticker `.info` call for currency (43s for that 40-ticker batch) since
+  it serves arbitrary user-registered tickers, not a fixed list - the
+  curated overview's own hardcoded-currency optimization from 5.5 doesn't
+  apply to it.
+- 2026-09-09: Optimized `/markets/overview` right after 5.8, combining both
+  fixes: replaced 80 sequential `_fetch_curated_entry()` `.history()` calls
+  with one `yf.download()` batch call for every unique curated ticker
+  (`_fetch_curated_batch()`), using 5.8's `dropna()` per-ticker handling
+  (safe now for a mixed multi-exchange batch) and 5.5's hardcoded
+  currency/name (no per-ticker `.info` calls). Result: **~30.5s -> ~5.5-9.7s**
+  across repeated runs (confirmed 3 times), same 90/90 entries correct, 0
+  errors - verified against a single batch spanning ~10 exchanges (US, JSE,
+  LSE, multiple European exchanges, ASX, crypto). `_fetch_curated_entry`
+  removed (superseded). Updated the frontend's latency messaging and the
+  endpoint's docstring (both were already stale re: 50 vs 80 tickers/2 vs 5
+  countries from earlier in this session) to match reality.
 - 2026-09-09: User reported the Instrument Registry section "failing" after
   4.4, backend logs showing NaN. The market.py NaN guard from 4.3 was already
   live and working (confirmed - `GET /instruments` returns 200 with `null`

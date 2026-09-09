@@ -8,8 +8,8 @@ st.title("🌍 Markets Overview")
 
 st.caption(
     "Live top-10 lists, always fetched fresh (nothing is stored). "
-    "This pulls ~80 tickers from Yahoo Finance in one go, so it can take "
-    "25-35 seconds to load."
+    "This pulls ~80 tickers from Yahoo Finance in one batched request, "
+    "usually taking 5-10 seconds to load."
 )
 
 
