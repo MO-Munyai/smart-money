@@ -5,6 +5,22 @@ import plotly.graph_objects as go
 
 API_URL = "http://127.0.0.1:8000"
 
+# Yahoo's actual valid intervals, each mapped to the period choices that stay
+# within that interval's real lookback limit (confirmed empirically - Yahoo
+# silently returns 0 rows rather than erroring when a period/interval
+# combination exceeds its limit, e.g. 1m data is capped at 8 days,
+# 5m/15m/30m at 60 days). Keeping period options dependent on the chosen
+# interval means every combination in the UI is guaranteed to actually work.
+HISTORY_INTERVAL_PERIODS = {
+    "1m": ["1d", "5d"],
+    "5m": ["1d", "5d", "1mo"],
+    "15m": ["1d", "5d", "1mo"],
+    "30m": ["1d", "5d", "1mo"],
+    "1h": ["5d", "1mo", "3mo", "6mo", "1y", "2y"],
+    "4h": ["5d", "1mo", "3mo", "6mo", "1y", "2y"],
+    "1d": ["1mo", "3mo", "6mo", "1y", "5y"],
+}
+
 
 def api_request(method, url, **kwargs):
     """
@@ -147,12 +163,27 @@ else:
                 # -----------------------------
                 st.subheader("Price History")
 
-                period = st.selectbox(
-                    "Period", ["1mo", "3mo", "6mo", "1y", "5y"], index=2, key="history_period"
-                )
+                hist_col1, hist_col2 = st.columns(2)
+                with hist_col1:
+                    interval = st.selectbox(
+                        "Interval", list(HISTORY_INTERVAL_PERIODS.keys()),
+                        index=6, key="history_interval"  # default "1d"
+                    )
+                with hist_col2:
+                    period_options = HISTORY_INTERVAL_PERIODS[interval]
+                    default_period_index = period_options.index("6mo") if "6mo" in period_options else 0
+                    # Keyed per-interval so switching interval can't leave a
+                    # stale selection that isn't in the new options list
+                    # (Streamlit raises if a widget's cached value isn't
+                    # among its current options).
+                    period = st.selectbox(
+                        "Period", period_options, index=default_period_index,
+                        key=f"history_period_{interval}"
+                    )
+
                 h, herr = api_request(
                     "GET", f"{API_URL}/instruments/{selected_ticker}/history",
-                    params={"period": period}
+                    params={"period": period, "interval": interval}
                 )
                 if herr:
                     st.error(herr)
@@ -174,7 +205,7 @@ else:
                                 close=hist_df["close"]
                             )])
                             fig.update_layout(
-                                title=f"{selected_ticker} - {period} (ZAR)",
+                                title=f"{selected_ticker} - {period} @ {interval} (ZAR)",
                                 xaxis_rangeslider_visible=False
                             )
                             st.plotly_chart(fig, use_container_width=True)

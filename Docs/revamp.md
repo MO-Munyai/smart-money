@@ -267,3 +267,17 @@ Replace transaction form + portfolio dashboard with:
   raising; pointed at the real running backend -> normal 200 response.
   Between this and the backend's global handler, every network/parse boundary
   in both frontend and backend now degrades to a message instead of crashing.
+- 2026-09-09: User asked to add minute/hour interval options to 4.5's history
+  chart (1m/5m/10m/15m/30m/1h/3h/6h/12h). Tested against the live API first -
+  `10m`/`3h`/`6h`/`12h` aren't valid Yahoo intervals at all (confirmed
+  Yahoo's actual set: `1m,2m,5m,15m,30m,1h,4h,1d,5d,1wk,1mo,3mo` - invalid
+  ones don't error, they silently return 0 rows). Used `4h` in place of
+  `3h`/`6h`/`12h` since it's the only sub-daily option beyond `1h` Yahoo
+  offers. Also confirmed real depth limits per interval (1m -> 8 days max,
+  5m/15m/30m -> 60 days max, 1h/4h -> 2y+ fine) - so made the Period dropdown
+  depend on the selected Interval, keyed per-interval
+  (`history_period_{interval}`) to avoid Streamlit raising when a cached
+  widget value isn't in a newly-changed options list. Every interval/period
+  combination in the resulting UI was individually curl-tested against the
+  real backend and confirmed to return actual bars, both at defaults and at
+  each interval's max-period boundary.
