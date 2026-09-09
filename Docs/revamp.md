@@ -155,7 +155,7 @@ Replace transaction form + portfolio dashboard with:
         have no screener equivalent anyway; also avoids the screener call's
         own latency/rate-limit exposure on every overview load. See decisions
         log for the real performance work this task turned into.
-  - [ ] 5.6 — Frontend: landing/default view rendering the 4 category tables
+  - [x] 5.6 — Frontend: landing/default view rendering the 4 category tables
         from 5.5 (e.g. "AAPL — ZAR 5,058.74 / USD 230.10 / ZAR-USD 21.98"),
         shown by default ahead of/above the registry-driven sections
   - [x] 5.7 — yfinance deep-dive: comprehensive empirical research beyond our
@@ -297,6 +297,38 @@ Replace transaction form + portfolio dashboard with:
   is documented as slow-on-purpose (~10s+) rather than optimized further for
   now; batching becomes a safe option once 5.8 is done. Verified end-to-end
   through the real HTTP endpoint: 40/40 entries resolved, 0 errors, ~11s.
+- 2026-09-09: Extended 5.5 with a country/market grouping alongside the type
+  grouping, per user request ("us top 10 and zar top 10") - noticed the
+  curated list had zero South African instruments despite ZAR being this
+  app's whole currency focus. `/markets/overview` now returns
+  `{"by_type": {...4 categories...}, "by_country": {"US": [...], "South Africa": [...]}}`.
+  "US" reuses `CURATED_MARKETS["stocks"]`'s already-fetched results rather
+  than refetching (verified byte-identical values) - added South Africa as a
+  genuinely new curated list: top 10 JSE-listed instruments by real market
+  cap, verified live before shipping (includes JSE-listed dual/foreign
+  names like BHP Group and Richemont, matching how "JSE Top 40" style lists
+  are normally presented). All South Africa entries confirmed `currency: "ZAc"`,
+  `fx_rate: null` (5.9's fix applying correctly, no forex lookup attempted).
+  Total unique tickers fetched per overview call: 50 (40 original + 10 new
+  SA), ~17s end-to-end - documented as the new expected latency.
+- 2026-09-09: Caught a real bug before 5.6 could hit it: `Frontend/api_client.py`
+  `api_request()` hardcoded `timeout=15` with no way to override (passing
+  `timeout=` in kwargs would've collided and raised `TypeError`), but
+  `/markets/overview` now takes ~17s - every call to it would have falsely
+  reported "backend unreachable" via a client-side timeout, even though the
+  backend was working fine, just slow. Fixed with `kwargs.setdefault("timeout", 15)`,
+  verified an override actually takes effect with no `TypeError`. 5.6
+  (`Frontend/pages/Markets.py`) calls it with `timeout=45` for headroom.
+- 2026-09-09: 5.6 built as another Streamlit page (`Frontend/pages/Markets.py`,
+  alongside Admin) rather than embedded in the main app - manual "Load /
+  Refresh" button rather than auto-loading, consistent with every other
+  opt-in-for-expensive-calls decision in this phase (deep health check,
+  etc.) given the ~17s live fetch. Renders both `by_type` and `by_country`
+  as tabs, each row showing native price, currency, fx rate (or "1:1
+  (ZAR-equivalent)" for ZAC tickers), and ZAR price. Verified the actual
+  DataFrame-building logic against real live data (not just that it
+  doesn't crash) - output matches exactly what was intended, and all three
+  pages (main, Admin, Markets) confirmed loading with no server errors.
 - 2026-09-09: User reported the Instrument Registry section "failing" after
   4.4, backend logs showing NaN. The market.py NaN guard from 4.3 was already
   live and working (confirmed - `GET /instruments` returns 200 with `null`

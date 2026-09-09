@@ -116,10 +116,11 @@ def health(deep: bool = False, db: Session = Depends(get_db)):
 @app.get("/markets/overview")
 def markets_overview():
     """
-    Live price breakdown for the curated top-10 stocks/ETFs/indices/crypto,
-    grouped by category. Powers the default landing view (5.6). Takes ~10s+
-    to fetch all 40 tickers live (no persistence) - callers should expect
-    that and treat it as a background/deferred load, not an instant one.
+    Live price breakdown for curated top-10 lists, grouped two ways:
+    by instrument type (stocks/ETFs/indices/crypto) and by country/market
+    (US, South Africa). Powers the default landing view (5.6). Takes ~15s+
+    to fetch (50 unique tickers live, no persistence) - callers should
+    expect that and treat it as a background/deferred load, not instant.
     """
     return get_market_overview()
 

@@ -9,9 +9,14 @@ def api_request(method, url, **kwargs):
     timeout, DNS failure, etc.) degrades to (None, message) instead of
     crashing the page. Distinct from error_detail() below, which handles the
     separate case of "got a response back, but it was an error".
+
+    Defaults to a 15s timeout; pass timeout=<seconds> to override for a
+    slower endpoint (e.g. /markets/overview, which fetches ~50 tickers live
+    and can take 15-20s+).
     """
+    kwargs.setdefault("timeout", 15)
     try:
-        return requests.request(method, url, timeout=15, **kwargs), None
+        return requests.request(method, url, **kwargs), None
     except requests.exceptions.RequestException as e:
         return None, f"Could not reach backend: {e}"
 

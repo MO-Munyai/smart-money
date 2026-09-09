@@ -180,40 +180,81 @@ CURATED_MARKETS = {
     ],
 }
 
+# Country/market groupings for the same overview. "US" reuses CURATED_MARKETS
+# ["stocks"] verbatim rather than duplicating it, so those 10 tickers are
+# only ever fetched once per overview call. South Africa has no overlap with
+# any type-based list yet, so it's fetched separately - ranked by real
+# market cap, confirmed live on 2026-09-09 (includes JSE-listed dual/foreign
+# names like BHP Group and Richemont, consistent with how "JSE Top 40"-style
+# lists are normally presented, not just SA-domiciled companies).
+CURATED_COUNTRIES = {
+    "US": [t for t, _ in CURATED_MARKETS["stocks"]],
+    "South Africa": [
+        "BHG.JO", "CFR.JO", "PRX.JO", "AGL.JO", "NPN.JO",
+        "CPI.JO", "FSR.JO", "SBK.JO", "MTN.JO", "VOD.JO",
+    ],
+}
+# Currency for the South Africa list only (US reuses CURATED_MARKETS'
+# currencies via the ticker lookup below) - all confirmed "ZAc" live.
+_SOUTH_AFRICA_CURRENCY = "ZAc"
+
+
+def _fetch_curated_entry(ticker: str, currency: str):
+    """
+    Live price + conversion breakdown for one curated ticker, with the
+    same NaN/error handling as the rest of services/market.py. Currency is
+    passed in (hardcoded per curated ticker, verified live) rather than
+    looked up via .info - see CURATED_MARKETS' comment for why.
+    """
+    try:
+        stock = yf.Ticker(ticker)
+        data = stock.history(period="1d")
+        if data.empty:
+            return {"ticker": ticker, "error": "no data"}
+
+        raw_price = float(data["Close"].iloc[-1])
+        if math.isnan(raw_price):
+            return {"ticker": ticker, "error": "no data"}
+
+        breakdown = get_price_breakdown(ticker, raw_price, currency)
+        return {"ticker": ticker, **breakdown}
+    except YFRateLimitError:
+        _record_rate_limit_hit(f"get_market_overview[{ticker}]")
+        return {"ticker": ticker, "error": "rate limited"}
+    except Exception as e:
+        print(f"Error fetching overview price for {ticker}: {e}")
+        return {"ticker": ticker, "error": "fetch failed"}
+
 
 def get_market_overview():
     """
     Live price breakdown (native price, currency, fx rate, ZAR price) for
-    the curated top-10 per category. Returns
-    {category: [{ticker, native_price, currency, fx_rate, zar_price}, ...]},
-    with {"ticker": ..., "error": "..."} entries for any ticker that failed.
+    the curated top-10 lists, grouped two ways: by instrument type
+    (stocks/etfs/indices/crypto) and by country/market (US, South Africa).
+    Returns {"by_type": {...}, "by_country": {...}}, each entry either
+    {ticker, native_price, currency, fx_rate, zar_price} or
+    {ticker, error} if that ticker failed.
     """
-    overview = {}
+    by_type = {}
+    fetched_by_ticker = {}
     for category, entries in CURATED_MARKETS.items():
         results = []
         for ticker, currency in entries:
-            try:
-                stock = yf.Ticker(ticker)
-                data = stock.history(period="1d")
-                if data.empty:
-                    results.append({"ticker": ticker, "error": "no data"})
-                    continue
+            entry = _fetch_curated_entry(ticker, currency)
+            fetched_by_ticker[ticker] = entry
+            results.append(entry)
+        by_type[category] = results
 
-                raw_price = float(data["Close"].iloc[-1])
-                if math.isnan(raw_price):
-                    results.append({"ticker": ticker, "error": "no data"})
-                    continue
+    by_country = {
+        # Already fetched above as CURATED_MARKETS["stocks"] - reuse, don't refetch.
+        "US": [fetched_by_ticker[ticker] for ticker in CURATED_COUNTRIES["US"]],
+        "South Africa": [
+            _fetch_curated_entry(ticker, _SOUTH_AFRICA_CURRENCY)
+            for ticker in CURATED_COUNTRIES["South Africa"]
+        ],
+    }
 
-                breakdown = get_price_breakdown(ticker, raw_price, currency)
-                results.append({"ticker": ticker, **breakdown})
-            except YFRateLimitError:
-                _record_rate_limit_hit(f"get_market_overview[{ticker}]")
-                results.append({"ticker": ticker, "error": "rate limited"})
-            except Exception as e:
-                print(f"Error fetching overview price for {ticker}: {e}")
-                results.append({"ticker": ticker, "error": "fetch failed"})
-        overview[category] = results
-    return overview
+    return {"by_type": by_type, "by_country": by_country}
 
 
 def fetch_asset_metadata(ticker: str):
