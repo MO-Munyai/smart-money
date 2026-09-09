@@ -129,9 +129,11 @@ Replace transaction form + portfolio dashboard with:
         selected instrument, plotly line/candlestick chart
   - [x] 4.6 — Comparison view: multi-select 2+ tickers, `GET /instruments/compare`,
         side-by-side metrics table
-- [ ] **Phase 5 — Observability & Market Overview**: added mid-Phase-4 after the
+- [x] **Phase 5 — Observability & Market Overview**: added mid-Phase-4 after the
       rate-limit discussion. Inserted before the old Phase 5, which is renumbered
-      to Phase 6 below.
+      to Phase 6 below. All 10 sub-tasks done, including two real bugs found and
+      fixed along the way (batch-NaN 500 crash, GBp/pence unit bug) beyond what
+      was originally scoped, plus a 3-5x latency optimization on `/markets/overview`.
   - [x] 5.1 — `services/market.py`: catch `yfinance.exceptions.YFRateLimitError`
         specifically (not just bare `except Exception`) in every fetch function
         (`get_live_price`, `get_live_prices`, `get_price_history`,
@@ -180,7 +182,7 @@ Replace transaction form + portfolio dashboard with:
         relationship the `.JO` suffix check already handles for the cents
         math. Done ahead of order (was next up after 5.4) after the user hit
         the noisy failed lookup live in server logs.
-  - [ ] 5.10 — `fetch_asset_metadata`: fix the invalid-ticker check. Per 5.7's
+  - [x] 5.10 — `fetch_asset_metadata`: fix the invalid-ticker check. Per 5.7's
         bonus finding, `if not info` never fires for a bad/delisted ticker -
         Yahoo returns a non-empty degenerate dict (`{'trailingPegRatio': None}`),
         not an empty one - so `GET /instruments/{ticker}` and `/compare`
@@ -376,6 +378,18 @@ Replace transaction form + portfolio dashboard with:
   removed (superseded). Updated the frontend's latency messaging and the
   endpoint's docstring (both were already stale re: 50 vs 80 tickers/2 vs 5
   countries from earlier in this session) to match reality.
+- 2026-09-09: 5.10 done - `fetch_asset_metadata` now rejects a ticker unless
+  at least one of `shortName`/`longName`/`regularMarketPrice` is populated,
+  instead of the old `if not info` check that never actually fired (Yahoo's
+  invalid-ticker response is a non-empty degenerate dict). Verified live:
+  `ZZZZINVALID` now correctly returns `None`; every previously-tested valid
+  ticker across every exchange (US/JSE/LSE/European/ASX/crypto/index) still
+  resolves with no regression. Also verified through the real endpoints
+  this was meant to fix: `GET /instruments/compare?tickers=AAPL,ZZZZINVALID`
+  now silently drops the invalid one instead of showing a blank profile for
+  it, and `?tickers=ZZZZINVALID,ALSOFAKE` (all-invalid) now actually reaches
+  the existing "No valid tickers found" 404 - a path that could never fire
+  before this fix. **Phase 5 complete** - all 10 sub-tasks done.
 - 2026-09-09: User reported the Instrument Registry section "failing" after
   4.4, backend logs showing NaN. The market.py NaN guard from 4.3 was already
   live and working (confirmed - `GET /instruments` returns 200 with `null`

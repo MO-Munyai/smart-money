@@ -339,7 +339,15 @@ def fetch_asset_metadata(ticker: str):
         stock = yf.Ticker(ticker)
         info = stock.info
 
-        if not info:
+        # `info` is never actually empty for an invalid/delisted ticker -
+        # Yahoo returns a degenerate one-key dict ({"trailingPegRatio": None})
+        # instead, so `if not info` never fires. Every valid ticker we've
+        # tested (stocks, ETFs, crypto, indices, across US/JSE/LSE/European
+        # exchanges) has at least one of these three populated; an invalid
+        # ticker has none. Confirmed live 2026-09-09 - see Docs/yfinance-notes.md.
+        if not info or not (
+            info.get("shortName") or info.get("longName") or info.get("regularMarketPrice")
+        ):
             return None
 
         roe_raw = info.get("returnOnEquity")
