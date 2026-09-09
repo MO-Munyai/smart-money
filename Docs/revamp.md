@@ -132,7 +132,7 @@ Replace transaction form + portfolio dashboard with:
 - [ ] **Phase 5 — Observability & Market Overview**: added mid-Phase-4 after the
       rate-limit discussion. Inserted before the old Phase 5, which is renumbered
       to Phase 6 below.
-  - [ ] 5.1 — `services/market.py`: catch `yfinance.exceptions.YFRateLimitError`
+  - [x] 5.1 — `services/market.py`: catch `yfinance.exceptions.YFRateLimitError`
         specifically (not just bare `except Exception`) in every fetch function
         (`get_live_price`, `get_live_prices`, `get_price_history`,
         `fetch_asset_metadata`); track a hit count + last-hit timestamp in

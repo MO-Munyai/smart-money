@@ -1,8 +1,31 @@
 # services/market.py
 
 import math
+from datetime import datetime, timezone
 import yfinance as yf
+from yfinance.exceptions import YFRateLimitError
 from services.currency import normalize_price
+
+# Module-level rate-limit tracking. yfinance is an unofficial scraper around
+# Yahoo's endpoints with no published rate-limit headers/dashboard to check
+# proactively (see Docs/yfinance-notes.md) - the best we can do is notice
+# when it happens and make it distinguishable from "ticker doesn't exist" or
+# any other failure, instead of swallowing it as a generic exception.
+_rate_limit_state = {"hits": 0, "last_hit_at": None}
+
+
+def _record_rate_limit_hit(context: str):
+    _rate_limit_state["hits"] += 1
+    _rate_limit_state["last_hit_at"] = datetime.now(timezone.utc)
+    print(
+        f"[rate-limit] YFRateLimitError #{_rate_limit_state['hits']} "
+        f"in {context} at {_rate_limit_state['last_hit_at'].isoformat()}"
+    )
+
+
+def get_rate_limit_state():
+    """Snapshot of rate-limit hits so far - consumed by the /health endpoint."""
+    return dict(_rate_limit_state)
 
 
 def get_live_price(ticker: str):
@@ -21,6 +44,9 @@ def get_live_price(ticker: str):
 
         currency = stock.info.get("currency", "ZAR")
         return normalize_price(ticker, raw_price, currency)
+    except YFRateLimitError:
+        _record_rate_limit_hit("get_live_price")
+        return None
     except Exception:
         return None
 
@@ -51,8 +77,15 @@ def get_live_prices(tickers: list[str]):
                     info = yf.Ticker(ticker).info
                     currency = info.get("currency", "ZAR")
                     prices[ticker] = normalize_price(ticker, raw_price, currency)
+            except YFRateLimitError:
+                _record_rate_limit_hit(f"get_live_prices[{ticker}]")
+                prices[ticker] = None
             except Exception:
                 prices[ticker] = None
+    except YFRateLimitError:
+        _record_rate_limit_hit("get_live_prices[batch download]")
+        for ticker in tickers:
+            prices[ticker] = None
     except Exception as e:
         print(f"Error fetching batch prices: {e}")
         for ticker in tickers:
@@ -90,6 +123,9 @@ def get_price_history(ticker: str, period: str = "6mo", interval: str = "1d"):
                 "volume": float(row["Volume"])
             })
         return history
+    except YFRateLimitError:
+        _record_rate_limit_hit(f"get_price_history[{ticker}]")
+        return []
     except Exception as e:
         print(f"Error fetching history for {ticker}: {e}")
         return []
@@ -128,6 +164,9 @@ def fetch_asset_metadata(ticker: str):
             "dividend_yield": info.get("dividendYield")
         }
 
+    except YFRateLimitError:
+        _record_rate_limit_hit(f"fetch_asset_metadata[{ticker}]")
+        return None
     except Exception as e:
         print(f"Error fetching metadata for {ticker}: {e}")
         return None
