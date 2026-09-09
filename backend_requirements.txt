@@ -1,7 +1,8 @@
-fastapi 
-uvicorn 
-sqlalchemy 
-pydantic 
-yfinance 
-pandas 
+fastapi
+uvicorn
+sqlalchemy
+pydantic
+yfinance
+pandas
 python-dotenv
+psutil

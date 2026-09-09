@@ -138,7 +138,7 @@ Replace transaction form + portfolio dashboard with:
         `fetch_asset_metadata`); track a hit count + last-hit timestamp in
         module state and log clearly so a rate-limit hit is distinguishable
         from "ticker doesn't exist" or any other failure
-  - [ ] 5.2 — Backend: `GET /health` endpoint exposing app status + the
+  - [x] 5.2 — Backend: `GET /health` endpoint exposing app status + the
         rate-limit stats from 5.1
   - [ ] 5.3 — Frontend: new Admin page/section rendering `/health` (rate-limit
         hit count/last-hit-time now; room for more admin info later)
@@ -235,6 +235,17 @@ Replace transaction form + portfolio dashboard with:
   Screener API (`yf.screen()`) confirmed working, revises 5.5's stocks-category
   approach from "curated only" to "screener viable for stocks, curated still
   needed for ETF/index/crypto."
+- 2026-09-09: Expanded 5.2's `/health` into a real diagnostics endpoint per
+  user request: uptime, DB reachability + latency + instrument count, Python
+  version/platform, and process memory/CPU via `psutil` (new dependency,
+  added to `backend_requirements.txt`, gracefully degrades if not yet
+  installed). Live Yahoo reachability check is opt-in (`?deep=true`) rather
+  than always-on - an admin page auto-polling `/health` shouldn't itself
+  become yfinance traffic contributing to the exact rate-limit problem 5.1
+  exists to track. `status` aggregates to "degraded" if DB or (when deep)
+  market data isn't reachable. Verified live: cheap mode fast with real
+  instrument count (5) and process stats (137MB), deep mode's yfinance
+  round-trip measured at ~2.6s, consistent with earlier latency research.
 - 2026-09-09: User reported the Instrument Registry section "failing" after
   4.4, backend logs showing NaN. The market.py NaN guard from 4.3 was already
   live and working (confirmed - `GET /instruments` returns 200 with `null`

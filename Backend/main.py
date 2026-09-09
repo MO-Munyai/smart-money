@@ -1,4 +1,9 @@
 # Backend/main.py
+import platform
+import sys
+import time
+from datetime import datetime, timezone
+
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -7,12 +12,18 @@ import models
 import schemas
 import crud
 from database import SessionLocal, engine
-from services.market import get_live_price, get_live_prices, get_price_history, fetch_asset_metadata
+from services.market import (
+    get_live_price, get_live_prices, get_price_history, fetch_asset_metadata,
+    get_rate_limit_state
+)
 
 # Create DB tables
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="SmartMoney v0.3")
+
+_start_time = time.monotonic()
+_started_at = datetime.now(timezone.utc)
 
 
 # Catches anything not already turned into an HTTPException below (e.g. a DB
@@ -31,6 +42,72 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+# -------------------------------
+# Health
+# -------------------------------
+@app.get("/health")
+def health(deep: bool = False, db: Session = Depends(get_db)):
+    """
+    System diagnostics. Cheap by default (uptime, DB reachability, rate-limit
+    stats, process info) - pass ?deep=true to additionally verify Yahoo
+    Finance itself is reachable right now. Deep is opt-in on purpose: it
+    makes a real yfinance call, so an admin page auto-polling /health
+    shouldn't do that on every refresh and become rate-limit exposure of
+    its own (see 5.1).
+    """
+    db_start = time.monotonic()
+    try:
+        instrument_count = db.query(models.Instrument).count()
+        database = {
+            "reachable": True,
+            "instrument_count": instrument_count,
+            "latency_ms": round((time.monotonic() - db_start) * 1000, 2)
+        }
+    except Exception as e:
+        database = {"reachable": False, "error": str(e)}
+
+    system = {
+        "python_version": sys.version.split()[0],
+        "platform": platform.platform()
+    }
+    try:
+        import psutil
+        process = psutil.Process()
+        system["process_memory_mb"] = round(process.memory_info().rss / (1024 * 1024), 2)
+        system["process_cpu_percent"] = process.cpu_percent(interval=0.1)
+    except ImportError:
+        system["process_stats"] = "psutil not installed - pip install -r backend_requirements.txt"
+
+    rate_limit = get_rate_limit_state()
+
+    result = {
+        "status": "ok" if database["reachable"] else "degraded",
+        "uptime_seconds": round(time.monotonic() - _start_time, 1),
+        "started_at": _started_at,
+        "checked_at": datetime.now(timezone.utc),
+        "database": database,
+        "rate_limit": {
+            "hits": rate_limit["hits"],
+            "last_hit_at": rate_limit["last_hit_at"]
+        },
+        "system": system
+    }
+
+    if deep:
+        market_start = time.monotonic()
+        price = get_live_price("AAPL")
+        market_reachable = price is not None
+        result["market_data"] = {
+            "reachable": market_reachable,
+            "checked_ticker": "AAPL",
+            "latency_ms": round((time.monotonic() - market_start) * 1000, 2)
+        }
+        if not market_reachable:
+            result["status"] = "degraded"
+
+    return result
 
 
 # -------------------------------
