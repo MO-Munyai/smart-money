@@ -142,7 +142,7 @@ Replace transaction form + portfolio dashboard with:
         rate-limit stats from 5.1
   - [x] 5.3 — Frontend: new Admin page/section rendering `/health` (rate-limit
         hit count/last-hit-time now; room for more admin info later)
-  - [ ] 5.4 — `services/market.py`: expose native price + currency code + the
+  - [x] 5.4 — `services/market.py`: expose native price + currency code + the
         fx rate used alongside the existing ZAR-normalized price (new function
         or extended return shape) — `get_live_price` currently discards the
         native price/currency once it converts to ZAR, needed for 5.6's
@@ -174,11 +174,13 @@ Replace transaction form + portfolio dashboard with:
         sufficient once `.iloc[-1]` stops being trusted blindly; the NaN
         comes from mixing 24/7 crypto with market-hours equities in one
         batch call. No persistence involved either way.
-  - [ ] 5.9 — `services/currency.py` `normalize_price`: treat `ZAC` as
-        `ZAR`-equivalent (skip the forex lookup for it) instead of trying a
-        `ZACZAR=X` conversion that doesn't exist on Yahoo. Per 5.7 finding 3
-        - `ZAC` is just ZAR-in-cents, same relationship the `.JO` suffix
-        check already handles for the cents math.
+  - [x] 5.9 — `services/currency.py` `normalize_price`/`get_price_breakdown`:
+        treat `ZAC` as `ZAR`-equivalent (skip the forex lookup for it)
+        instead of trying a `ZACZAR=X` conversion that doesn't exist on
+        Yahoo. Per 5.7 finding 3 - `ZAC` is just ZAR-in-cents, same
+        relationship the `.JO` suffix check already handles for the cents
+        math. Done ahead of order (was next up after 5.4) after the user hit
+        the noisy failed lookup live in server logs.
   - [ ] 5.10 — `fetch_asset_metadata`: fix the invalid-ticker check. Per 5.7's
         bonus finding, `if not info` never fires for a bad/delisted ticker -
         Yahoo returns a non-empty degenerate dict (`{'trailingPegRatio': None}`),
@@ -260,6 +262,18 @@ Replace transaction form + portfolio dashboard with:
   match what the page reads, `format_uptime()` converts correctly, and the
   deep checkbox's boolean actually reaches FastAPI's `deep: bool` query
   param correctly (`?deep=True` parses truthy, deep check fires for real).
+- 2026-09-09: 5.4 - added `services/currency.py` `get_price_breakdown()`
+  (native price, currency, fx rate applied, zar price), with `normalize_price()`
+  refactored into a thin wrapper around it. `services/market.py` got a new
+  `get_live_price_detail()` using the breakdown; `get_live_price()` itself
+  refactored to be a thin wrapper around that, so there's one fetch code path
+  instead of two. Verified byte-for-byte regression (AAPL/NPN.JO/BTC-USD):
+  `get_live_price()`'s output exactly matches `detail["zar_price"]` in every
+  case. Also caught this live: `NPN.JO`'s `zar_price` is correct today only
+  because the still-broken `ZACZAR=X` forex lookup (5.9) fails and "no rate
+  found" happens to default to "apply no conversion" - accidentally right,
+  not intentionally. 5.9 will make that explicit rather than relying on the
+  lookup failing usefully.
 - 2026-09-09: User reported the Instrument Registry section "failing" after
   4.4, backend logs showing NaN. The market.py NaN guard from 4.3 was already
   live and working (confirmed - `GET /instruments` returns 200 with `null`

@@ -4,7 +4,7 @@ import math
 from datetime import datetime, timezone
 import yfinance as yf
 from yfinance.exceptions import YFRateLimitError
-from services.currency import normalize_price
+from services.currency import normalize_price, get_price_breakdown
 
 # Module-level rate-limit tracking. yfinance is an unofficial scraper around
 # Yahoo's endpoints with no published rate-limit headers/dashboard to check
@@ -28,9 +28,14 @@ def get_rate_limit_state():
     return dict(_rate_limit_state)
 
 
-def get_live_price(ticker: str):
+def get_live_price_detail(ticker: str):
     """
-    Fetches live price for a single ticker with currency normalization.
+    Like get_live_price, but returns the full conversion breakdown instead
+    of just the final ZAR figure: native price, native currency, the fx
+    rate applied (if any), and the ZAR price. Needed for the dual-currency
+    market overview (5.6) - get_live_price() previously discarded all of
+    this once it converted to ZAR.
+    Returns None if the ticker can't be resolved.
     """
     try:
         stock = yf.Ticker(ticker)
@@ -43,12 +48,20 @@ def get_live_price(ticker: str):
             return None
 
         currency = stock.info.get("currency", "ZAR")
-        return normalize_price(ticker, raw_price, currency)
+        return get_price_breakdown(ticker, raw_price, currency)
     except YFRateLimitError:
-        _record_rate_limit_hit("get_live_price")
+        _record_rate_limit_hit(f"get_live_price_detail[{ticker}]")
         return None
     except Exception:
         return None
+
+
+def get_live_price(ticker: str):
+    """
+    Fetches live price for a single ticker with currency normalization.
+    """
+    detail = get_live_price_detail(ticker)
+    return detail["zar_price"] if detail else None
 
 
 def get_live_prices(tickers: list[str]):
