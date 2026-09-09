@@ -125,7 +125,7 @@ Replace transaction form + portfolio dashboard with:
         (bonus bugfix along the way - see decisions log)
   - [x] 4.4 — Instrument detail view: select a ticker from the registry,
         `GET /instruments/{ticker}`, show fundamentals + live price
-  - [ ] 4.5 — Price history chart: `GET /instruments/{ticker}/history` for the
+  - [x] 4.5 — Price history chart: `GET /instruments/{ticker}/history` for the
         selected instrument, plotly line/candlestick chart
   - [ ] 4.6 — Comparison view: multi-select 2+ tickers, `GET /instruments/compare`,
         side-by-side metrics table

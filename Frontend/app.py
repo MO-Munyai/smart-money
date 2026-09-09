@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import pandas as pd
+import plotly.graph_objects as go
 
 API_URL = "http://127.0.0.1:8000"
 
@@ -140,5 +141,44 @@ else:
                     "ROE": detail.get("roe"),
                     "Added": detail.get("added_at")
                 }]))
+
+                # -----------------------------
+                # Price History
+                # -----------------------------
+                st.subheader("Price History")
+
+                period = st.selectbox(
+                    "Period", ["1mo", "3mo", "6mo", "1y", "5y"], index=2, key="history_period"
+                )
+                h, herr = api_request(
+                    "GET", f"{API_URL}/instruments/{selected_ticker}/history",
+                    params={"period": period}
+                )
+                if herr:
+                    st.error(herr)
+                elif h.status_code != 200:
+                    st.error(error_detail(h, "Failed to load price history"))
+                else:
+                    history_payload = safe_json(h)
+                    if history_payload is None:
+                        st.error("Price history returned an unreadable response")
+                    else:
+                        bars = history_payload.get("history", [])
+                        if bars:
+                            hist_df = pd.DataFrame(bars)
+                            fig = go.Figure(data=[go.Candlestick(
+                                x=hist_df["date"],
+                                open=hist_df["open"],
+                                high=hist_df["high"],
+                                low=hist_df["low"],
+                                close=hist_df["close"]
+                            )])
+                            fig.update_layout(
+                                title=f"{selected_ticker} - {period} (ZAR)",
+                                xaxis_rangeslider_visible=False
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+                        else:
+                            st.info("No price history available for this period")
     else:
         st.info("No instruments registered yet")
