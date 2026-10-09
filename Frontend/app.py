@@ -32,6 +32,28 @@ st.title("📊 SmartMoney")
 # -----------------------------
 st.header("➕ Register Instrument")
 
+with st.expander("📎 Not sure what ticker to use? Suffix cheat sheet"):
+    st.markdown(
+        """
+| Market | Suffix | Example |
+|---|---|---|
+| USA | *(none)* | `NVDA` |
+| South Africa | `.JO` | `CPI.JO` |
+| UK | `.L` | `BP.L` |
+| Canada | `.TO` | `TD.TO` |
+| Australia | `.AX` | `BHP.AX` |
+| Japan | `.T` | `7203.T` (Toyota) |
+| Germany | `.DE` | `BMW.DE` |
+| France | `.PA` | `MC.PA` |
+| Netherlands | `.AS` | `ASML.AS` |
+| Indices | `^` prefix | `^IXIC` |
+| Crypto | `-USD` suffix | `BTC-USD` |
+
+ETFs follow the same naming conventions as stocks. If in doubt, a quick
+Google search for "<company> ticker" usually turns up the exact symbol.
+        """
+    )
+
 with st.form("register_instrument"):
     col1, col2 = st.columns(2)
     with col1:
@@ -60,7 +82,8 @@ with st.form("register_instrument"):
 # -----------------------------
 st.header("📋 Instrument Registry")
 
-r, err = api_request("GET", f"{API_URL}/instruments")
+with st.spinner("Loading instrument registry..."):
+    r, err = api_request("GET", f"{API_URL}/instruments")
 if err:
     st.error(err)
 elif r.status_code != 200:
@@ -96,7 +119,8 @@ else:
         st.header("🔎 Instrument Detail")
 
         selected_ticker = st.selectbox("View instrument", tickers, key="detail_ticker")
-        d, derr = api_request("GET", f"{API_URL}/instruments/{selected_ticker}")
+        with st.spinner(f"Loading {selected_ticker} detail..."):
+            d, derr = api_request("GET", f"{API_URL}/instruments/{selected_ticker}")
         if derr:
             st.error(derr)
         elif d.status_code != 200:
@@ -146,10 +170,11 @@ else:
                         key=f"history_period_{interval}"
                     )
 
-                h, herr = api_request(
-                    "GET", f"{API_URL}/instruments/{selected_ticker}/history",
-                    params={"period": period, "interval": interval}
-                )
+                with st.spinner(f"Loading {selected_ticker} price history..."):
+                    h, herr = api_request(
+                        "GET", f"{API_URL}/instruments/{selected_ticker}/history",
+                        params={"period": period, "interval": interval}
+                    )
                 if herr:
                     st.error(herr)
                 elif h.status_code != 200:
@@ -188,10 +213,11 @@ else:
         if len(compare_tickers) < 2:
             st.info("Select at least two instruments to compare")
         else:
-            c, cerr = api_request(
-                "GET", f"{API_URL}/instruments/compare",
-                params={"tickers": ",".join(compare_tickers)}
-            )
+            with st.spinner("Loading comparison..."):
+                c, cerr = api_request(
+                    "GET", f"{API_URL}/instruments/compare",
+                    params={"tickers": ",".join(compare_tickers)}
+                )
             if cerr:
                 st.error(cerr)
             elif c.status_code != 200:
