@@ -114,7 +114,7 @@ def health(deep: bool = False, db: Session = Depends(get_db)):
 # Markets Overview
 # -------------------------------
 @app.get("/markets/overview")
-def markets_overview():
+def markets_overview(force: bool = False):
     """
     Live price breakdown for curated top-10 lists, grouped two ways:
     by instrument type (stocks/ETFs/indices/crypto) and by country/market
@@ -122,8 +122,11 @@ def markets_overview():
     default landing view (5.6). ~80 unique tickers, one batched download
     (no persistence) - typically 5-10s, but treat it as a background/
     deferred load rather than assuming it's instant.
+
+    Cached in-memory for 60s (6.2) - pass ?force=true to bypass and fetch
+    fresh (used by the frontend's "Refresh Now").
     """
-    return get_market_overview()
+    return get_market_overview(force=force)
 
 
 # -------------------------------

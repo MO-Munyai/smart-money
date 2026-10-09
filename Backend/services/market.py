@@ -307,7 +307,17 @@ def _fetch_curated_batch():
     return results
 
 
-def get_market_overview():
+#  40-request rate-limit burst test (5.7) showed no throttling, so this cache
+# isn't about avoiding a Yahoo penalty - it's about not redoing an ~80-ticker
+# live fetch for every caller. The frontend's own st.cache_data(ttl=60) only
+# dedupes reruns within one Streamlit process; this backend-level cache also
+# covers a second browser tab/process, the Admin page, curl, or any future
+# client hitting the same endpoint within the window.
+_overview_cache = {"data": None, "fetched_at": None}
+OVERVIEW_CACHE_TTL_SECONDS = 60
+
+
+def get_market_overview(force: bool = False):
     """
     Live price breakdown (name, native price, currency, fx rate, ZAR price)
     for the curated top-10 lists, grouped two ways: by instrument type
@@ -316,7 +326,15 @@ def get_market_overview():
     {"by_type": {...}, "by_country": {...}}, each entry either
     {ticker, name, native_price, currency, fx_rate, zar_price} or
     {ticker, name, error} if that ticker failed.
+
+    Cached in-memory for OVERVIEW_CACHE_TTL_SECONDS; pass force=True to
+    bypass the cache and fetch fresh (used by the frontend's "Refresh Now").
     """
+    now = datetime.now(timezone.utc)
+    cached_at = _overview_cache["fetched_at"]
+    if not force and cached_at is not None and (now - cached_at).total_seconds() < OVERVIEW_CACHE_TTL_SECONDS:
+        return _overview_cache["data"]
+
     batch = _fetch_curated_batch()
 
     by_type = {
@@ -328,7 +346,10 @@ def get_market_overview():
         for country, entries in CURATED_COUNTRIES.items()
     }
 
-    return {"by_type": by_type, "by_country": by_country}
+    result = {"by_type": by_type, "by_country": by_country}
+    _overview_cache["data"] = result
+    _overview_cache["fetched_at"] = now
+    return result
 
 
 def fetch_asset_metadata(ticker: str):

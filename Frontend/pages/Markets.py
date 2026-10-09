@@ -35,14 +35,20 @@ def entries_to_df(entries):
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def fetch_overview():
+def fetch_overview(force=False):
     """
     Cached for 60s: this page auto-loads on every visit, and without a
     cache that would mean re-hitting Yahoo for ~80 tickers every time
     someone navigates here (or Streamlit reruns for any other reason).
     Caches only plain dict/str/int - not the raw response object.
+
+    force=True passes ?force=true through to the backend, which has its
+    own 60s cache (6.2) - without this, clicking "Refresh Now" would only
+    clear Streamlit's cache and could still silently get stale data back
+    from the backend's cache.
     """
-    r, err = api_request("GET", f"{API_URL}/markets/overview", timeout=45)
+    params = {"force": "true"} if force else None
+    r, err = api_request("GET", f"{API_URL}/markets/overview", timeout=45, params=params)
     if err:
         return None, err
     if r.status_code != 200:
@@ -55,10 +61,11 @@ def fetch_overview():
 
 if st.button("🔄 Refresh Now"):
     fetch_overview.clear()
-    st.rerun()
-
-with st.spinner("Fetching ~80 tickers live from Yahoo Finance..."):
-    overview, err = fetch_overview()
+    with st.spinner("Fetching ~80 tickers live from Yahoo Finance..."):
+        overview, err = fetch_overview(force=True)
+else:
+    with st.spinner("Fetching ~80 tickers live from Yahoo Finance..."):
+        overview, err = fetch_overview()
 
 if err:
     st.error(err)
