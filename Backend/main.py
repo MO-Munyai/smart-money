@@ -16,6 +16,7 @@ from services.market import (
     get_live_price, get_live_prices, get_price_history, fetch_asset_metadata,
     get_rate_limit_state, get_market_overview
 )
+from services.search import search_instruments, get_known_types, get_known_countries
 
 # Create DB tables
 models.Base.metadata.create_all(bind=engine)
@@ -184,6 +185,24 @@ def compare_instruments(tickers: str):
         raise HTTPException(status_code=404, detail="No valid tickers found")
 
     return {"instruments": results}
+
+
+# NOTE: must stay above GET /instruments/{ticker}, same reasoning as compare.
+@app.get("/instruments/search")
+def search_instruments_endpoint(q: str, type: str = None, country: str = None):
+    """
+    Live search-by-name-or-ticker against Yahoo's own autocomplete endpoint
+    (6.x search feature) - not limited to the local registry, since the
+    point is discovering tickers to register, not just querying known ones.
+    """
+    results = search_instruments(q, type_filter=type, country_filter=country)
+    return {"results": results}
+
+
+@app.get("/instruments/search/meta")
+def search_meta():
+    """Known type/country filter values, so the frontend doesn't hardcode its own copy of EXCHANGE_COUNTRY_MAP."""
+    return {"types": get_known_types(), "countries": get_known_countries()}
 
 
 @app.get("/instruments/{ticker}")

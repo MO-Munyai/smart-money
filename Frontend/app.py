@@ -28,6 +28,82 @@ st.set_page_config(page_title="SmartMoney", layout="wide")
 st.title("📊 SmartMoney")
 
 # -----------------------------
+# Search Instruments
+# -----------------------------
+st.header("🔍 Search Instruments")
+st.caption(
+    "Search by company name or ticker (e.g. 'shoprite', 'naspers', 'bitcoin') - "
+    "live via Yahoo Finance, not limited to your registry below. A short "
+    "fragment like 'sho' may not find smaller/foreign names - a fuller word "
+    "works better. Narrow by type/country to speed up finding the right one."
+)
+
+with st.spinner("Loading search filters..."):
+    meta_r, meta_err = api_request("GET", f"{API_URL}/instruments/search/meta")
+
+search_types = ["Any"]
+search_countries = ["Any"]
+if not meta_err and meta_r.status_code == 200:
+    meta = safe_json(meta_r) or {}
+    search_types += meta.get("types", [])
+    search_countries += meta.get("countries", [])
+
+scol1, scol2, scol3 = st.columns([2, 1, 1])
+with scol1:
+    search_query = st.text_input(
+        "Search by name or ticker", key="instrument_search_query",
+        placeholder="e.g. shoprite, naspers, bitcoin"
+    )
+with scol2:
+    search_type = st.selectbox("Type", search_types, key="instrument_search_type")
+with scol3:
+    search_country = st.selectbox("Country", search_countries, key="instrument_search_country")
+
+if search_query.strip():
+    search_params = {"q": search_query.strip()}
+    if search_type != "Any":
+        search_params["type"] = search_type
+    if search_country != "Any":
+        search_params["country"] = search_country
+
+    with st.spinner(f"Searching for '{search_query.strip()}'..."):
+        s_r, s_err = api_request("GET", f"{API_URL}/instruments/search", params=search_params)
+
+    if s_err:
+        st.error(s_err)
+    elif s_r.status_code != 200:
+        st.error(error_detail(s_r, "Search failed"))
+    else:
+        search_payload = safe_json(s_r)
+        if search_payload is None:
+            st.error("Search returned an unreadable response")
+        else:
+            search_results = search_payload.get("results", [])
+            if not search_results:
+                st.info("No matches - try a fuller name/ticker or loosen the filters")
+            else:
+                for res in search_results:
+                    rcol1, rcol2 = st.columns([4, 1])
+                    with rcol1:
+                        st.write(
+                            f"**{res['ticker']}** - {res['name']} "
+                            f"*({res['type']} · {res['exchange']} · {res['country']})*"
+                        )
+                    with rcol2:
+                        if st.button("Register", key=f"register_search_{res['ticker']}"):
+                            reg_r, reg_err = api_request(
+                                "POST", f"{API_URL}/instruments",
+                                json={"ticker": res["ticker"], "type": res["type"]}
+                            )
+                            if reg_err:
+                                st.error(reg_err)
+                            elif reg_r.status_code == 200:
+                                st.success(f"{res['ticker']} registered")
+                                st.rerun()
+                            else:
+                                st.error(error_detail(reg_r, "Failed to register instrument"))
+
+# -----------------------------
 # Register Instrument
 # -----------------------------
 st.header("➕ Register Instrument")

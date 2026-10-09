@@ -221,6 +221,18 @@ Replace transaction form + portfolio dashboard with:
   - [ ] 6.6 — Full end-to-end regression pass across the whole app (all 3
         pages, every endpoint) now that a lot has changed since Phase 4's
         last full walkthrough
+  - [x] 6.7 — Search Instruments feature, added mid-phase per user request
+        (inspired by Bloomberg Terminal R&D, see `internal/notes_and_vision.txt`):
+        search by company name or ticker fragment, with type/country filters
+        to narrow results, surfaced as its own section (not merged into the
+        existing manual Register form - see decisions log for why). Backend:
+        `services/search.py` (`search_instruments`, live via `yf.Search()`,
+        no local index, consistent with the no-persistence data model),
+        `GET /instruments/search?q=&type=&country=`, `GET /instruments/search/meta`
+        (known type/country values, single source of truth for the frontend's
+        filter dropdowns). Frontend: new "Search Instruments" section in
+        `app.py` above Register Instrument, each result with an inline
+        Register button.
 
 ## Decisions log
 
@@ -474,6 +486,36 @@ Replace transaction form + portfolio dashboard with:
   raising; pointed at the real running backend -> normal 200 response.
   Between this and the backend's global handler, every network/parse boundary
   in both frontend and backend now degrades to a message instead of crashing.
+- 2026-10-09: User requested a search feature after R&D into the Bloomberg
+  Terminal (notes in `internal/notes_and_vision.txt`, which also sketches a
+  much larger Phase 7+ vision - search was the one piece pulled forward
+  into Phase 6 now). Two real decisions discussed before building:
+  (1) **Placement** - standalone "Search Instruments" section vs. merging
+  into the existing Register form's ticker field. Went standalone: Streamlit's
+  `st.form` only reruns on submit, not per keystroke, so true live type-ahead
+  structurally requires the search box to live outside a form anyway - a
+  faithful "merge into the form" would collapse into the same shape as the
+  standalone section, just losing the "look something up without
+  registering it" use case. (2) **Country filter breadth** - user chose
+  "any country Yahoo covers" over limiting to the 5 markets already curated
+  for the Markets page. Since `yf.Search()` has no server-side type/country
+  filter and returns a raw `exchange` code (e.g. "JNB") rather than a
+  country, built `EXCHANGE_COUNTRY_MAP` in `services/search.py` from live
+  empirical testing (searched real companies across ~15 countries/continents
+  to collect actual exchange codes - not guessed). Not exhaustive by design:
+  an unmapped exchange falls into an "Other" bucket using Yahoo's own
+  display name, rather than silently hiding results outside the ~20 mapped
+  countries. Verified live end-to-end: searching "shoprite" correctly
+  surfaces `SHP.JO` (Johannesburg -> South Africa) ahead of its German/US
+  OTC listings; type+country filters both narrow correctly; clicking
+  "Register" on a search result through a headless Streamlit `AppTest` run
+  actually called `POST /instruments` and registered it for real (then
+  removed the test registration). Also caught and fixed a self-inflicted
+  bug during verification: the new `/instruments/search/meta` endpoint
+  404'd right after adding it because the test backend process was started
+  before that code existed and wasn't restarted (no `--reload`) - not a
+  routing/ordering bug like compare's, just a stale process; confirmed
+  fixed after restart.
 - 2026-09-09: User asked to add minute/hour interval options to 4.5's history
   chart (1m/5m/10m/15m/30m/1h/3h/6h/12h). Tested against the live API first -
   `10m`/`3h`/`6h`/`12h` aren't valid Yahoo intervals at all (confirmed
