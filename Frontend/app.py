@@ -20,6 +20,8 @@ HISTORY_INTERVAL_PERIODS = {
     "1d": ["1mo", "3mo", "6mo", "1y", "5y"],
 }
 
+OVERVIEW_PAGE = "pages/Instrument_Overview.py"
+
 
 # -----------------------------
 # Page Config
@@ -83,13 +85,18 @@ if search_query.strip():
                 st.info("No matches - try a fuller name/ticker or loosen the filters")
             else:
                 for res in search_results:
-                    rcol1, rcol2 = st.columns([4, 1])
+                    rcol1, rcol2, rcol3 = st.columns([4, 1, 1])
                     with rcol1:
                         st.write(
                             f"**{res['ticker']}** - {res['name']} "
                             f"*({res['type']} · {res['exchange']} · {res['country']})*"
                         )
                     with rcol2:
+                        if st.button("Overview", key=f"overview_search_{res['ticker']}"):
+                            st.switch_page(
+                                OVERVIEW_PAGE, query_params={"ticker": res["ticker"]}
+                            )
+                    with rcol3:
                         if st.button("Register", key=f"register_search_{res['ticker']}"):
                             reg_r, reg_err = api_request(
                                 "POST", f"{API_URL}/instruments",

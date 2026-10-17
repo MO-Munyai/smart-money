@@ -256,3 +256,52 @@ def test_search_result_register_button_posts_result(backend):
     at.text_input(key="instrument_search_query").set_value("shoprite").run()
     at.button(key="register_search_SHP.JO").click().run()
     assert backend.calls_to("POST", "/instruments")[-1][3] == {"ticker": "SHP.JO", "type": "Stock"}
+
+
+# --- search result Overview button (7.1.6) ---
+
+SHP_OVERVIEW = {"ticker": "SHP.JO", "name": "Shoprite Holdings", "type": "Stock",
+                "exchange": "Johannesburg", "currency": "ZAc", "summary": None,
+                "website": None, "details": {}, "registered": False}
+
+
+def test_search_result_has_overview_and_register_buttons(backend):
+    route_defaults(backend, results=SEARCH_RESULTS)
+    at = run_main()
+    at.text_input(key="instrument_search_query").set_value("shoprite").run()
+    assert at.button(key="overview_search_SHP.JO").label == "Overview"
+    assert at.button(key="register_search_SHP.JO").label == "Register"
+
+
+def test_search_result_overview_button_opens_overview_page_for_that_ticker(backend):
+    route_defaults(backend, results=SEARCH_RESULTS)
+    backend.set("GET", "/instruments/SHP.JO/overview", FakeResponse(200, SHP_OVERVIEW))
+    at = run_main()
+    at.text_input(key="instrument_search_query").set_value("shoprite").run()
+    at.button(key="overview_search_SHP.JO").click().run()
+    assert not at.exception
+    assert at.query_params["ticker"] == ["SHP.JO"]
+    assert len(backend.calls_to("GET", "/instruments/SHP.JO/overview")) == 1
+    assert at.header[0].value == "Shoprite Holdings"
+
+
+def test_search_result_overview_button_does_not_register(backend):
+    route_defaults(backend, results=SEARCH_RESULTS)
+    backend.set("GET", "/instruments/SHP.JO/overview", FakeResponse(200, SHP_OVERVIEW))
+    at = run_main()
+    at.text_input(key="instrument_search_query").set_value("shoprite").run()
+    at.button(key="overview_search_SHP.JO").click().run()
+    assert backend.calls_to("POST", "/instruments") == []
+
+
+def test_each_search_result_gets_its_own_overview_button(backend):
+    two = SEARCH_RESULTS + [{"ticker": "NPN.JO", "name": "Naspers", "type": "Stock",
+                             "exchange": "JSE", "country": "South Africa"}]
+    route_defaults(backend, results=two)
+    backend.set("GET", "/instruments/NPN.JO/overview",
+                FakeResponse(200, {**SHP_OVERVIEW, "ticker": "NPN.JO", "name": "Naspers"}))
+    at = run_main()
+    at.text_input(key="instrument_search_query").set_value("jo").run()
+    at.button(key="overview_search_NPN.JO").click().run()
+    assert at.query_params["ticker"] == ["NPN.JO"]
+    assert backend.calls_to("GET", "/instruments/SHP.JO/overview") == []
