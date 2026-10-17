@@ -405,3 +405,109 @@ def fetch_asset_metadata(ticker: str):
     except Exception as e:
         print(f"Error fetching metadata for {ticker}: {e}")
         return None
+
+
+# Yahoo quoteType -> our InstrumentType. Duplicated from services/search.py
+# (which imports this module, so it can't be imported here without a cycle);
+# tests/test_market.py asserts the two stay identical.
+_OVERVIEW_QUOTE_TYPES = {
+    "EQUITY": "Stock",
+    "ETF": "ETF",
+    "CRYPTOCURRENCY": "Crypto",
+    "INDEX": "Index",
+}
+
+_MAX_OVERVIEW_OFFICERS = 10
+
+
+def _unix_to_iso_date(value):
+    """Yahoo returns some dates (fund inception, crypto launch) as unix seconds."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    try:
+        return datetime.fromtimestamp(value, tz=timezone.utc).date().isoformat()
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def fetch_overview_profile(ticker: str):
+    """
+    Deeper, descriptive profile of an instrument for the Instrument Overview
+    page (7.1). Works for any valid ticker - it does NOT require the ticker
+    to be registered. Separate from fetch_asset_metadata, which serves the
+    registry Detail view's numeric fundamentals.
+
+    The shape depends on the instrument type because Yahoo's data does
+    (probed 2026-10-17, see Docs/yfinance-notes.md "7.1.1"):
+      - Stock:  business summary + company details (HQ, employees, officers)
+      - ETF:    fund summary + fund details (family, category, assets, ...)
+      - Crypto: description (Yahoo puts it in `description`, not
+                `longBusinessSummary`) + supply/launch details
+      - Index:  no description at all - name/exchange/currency only
+    `details` always holds exactly the keys for its type (None when Yahoo
+    has no value), so callers can render without guessing; an unrecognised
+    quoteType gets an empty `details`.
+
+    Returns None for an invalid ticker. A Yahoo rate limit is recorded and
+    re-raised (rather than returned as None) so the caller can tell
+    "rate limited, try later" apart from "no such ticker".
+    """
+    try:
+        info = yf.Ticker(ticker).info
+    except YFRateLimitError:
+        _record_rate_limit_hit(f"fetch_overview_profile[{ticker}]")
+        raise
+
+    if not _info_is_valid(info):
+        return None
+
+    instrument_type = _OVERVIEW_QUOTE_TYPES.get(info.get("quoteType"))
+
+    if instrument_type == "Stock":
+        officers = [
+            {"name": o.get("name"), "title": o.get("title")}
+            for o in (info.get("companyOfficers") or [])
+            if isinstance(o, dict) and o.get("name")
+        ][:_MAX_OVERVIEW_OFFICERS]
+        details = {
+            "sector": info.get("sector"),
+            "industry": info.get("industry"),
+            "employees": info.get("fullTimeEmployees"),
+            "address": info.get("address1"),
+            "city": info.get("city"),
+            "state": info.get("state"),
+            "zip": info.get("zip"),
+            "country": info.get("country"),
+            "phone": info.get("phone"),
+            "ir_website": info.get("irWebsite"),
+            "market_cap": info.get("marketCap"),
+            "officers": officers,
+        }
+    elif instrument_type == "ETF":
+        details = {
+            "fund_family": info.get("fundFamily"),
+            "category": info.get("category"),
+            "legal_type": info.get("legalType"),
+            "inception_date": _unix_to_iso_date(info.get("fundInceptionDate")),
+            "total_assets": info.get("totalAssets"),
+            "nav_price": info.get("navPrice"),
+        }
+    elif instrument_type == "Crypto":
+        details = {
+            "circulating_supply": info.get("circulatingSupply"),
+            "market_cap": info.get("marketCap"),
+            "launch_date": _unix_to_iso_date(info.get("startDate")),
+        }
+    else:
+        details = {}
+
+    return {
+        "ticker": ticker.upper(),
+        "name": info.get("longName") or info.get("shortName") or ticker.upper(),
+        "type": instrument_type,
+        "exchange": info.get("fullExchangeName") or info.get("exchange"),
+        "currency": info.get("currency"),
+        "summary": info.get("longBusinessSummary") or info.get("description"),
+        "website": info.get("website"),
+        "details": details,
+    }

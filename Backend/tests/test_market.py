@@ -242,3 +242,168 @@ def test_get_rate_limit_state_returns_a_copy_not_the_live_dict():
     state = market.get_rate_limit_state()
     state["hits"] = -999
     assert market.get_rate_limit_state()["hits"] != -999
+
+
+# --- fetch_overview_profile (7.1.2) ---
+
+STOCK_INFO = {
+    "quoteType": "EQUITY", "longName": "Apple Inc.", "shortName": "Apple",
+    "fullExchangeName": "NasdaqGS", "exchange": "NMS", "currency": "USD",
+    "longBusinessSummary": "Designs phones.", "website": "https://apple.com",
+    "sector": "Technology", "industry": "Consumer Electronics",
+    "fullTimeEmployees": 164000, "address1": "One Apple Park Way",
+    "city": "Cupertino", "state": "CA", "zip": "95014", "country": "United States",
+    "phone": "1 408 996 1010", "irWebsite": "https://investor.apple.com",
+    "marketCap": 3_000_000_000_000,
+    "companyOfficers": [{"name": "Tim Cook", "title": "CEO", "age": 63}],
+}
+
+
+def patch_info(monkeypatch, info):
+    monkeypatch.setattr(market.yf, "Ticker", lambda t: FakeTicker(info=info))
+
+
+def test_overview_stock_maps_company_details(monkeypatch):
+    patch_info(monkeypatch, STOCK_INFO)
+
+    p = market.fetch_overview_profile("aapl")
+
+    assert p["ticker"] == "AAPL"
+    assert p["name"] == "Apple Inc."
+    assert p["type"] == "Stock"
+    assert p["exchange"] == "NasdaqGS"
+    assert p["summary"] == "Designs phones."
+    assert p["website"] == "https://apple.com"
+    assert p["details"]["employees"] == 164000
+    assert p["details"]["city"] == "Cupertino"
+    assert p["details"]["officers"] == [{"name": "Tim Cook", "title": "CEO"}]
+    assert "fund_family" not in p["details"]
+
+
+def test_overview_stock_missing_optional_fields_are_none(monkeypatch):
+    """e.g. NPN.JO: no state, no irWebsite."""
+    info = {k: v for k, v in STOCK_INFO.items() if k not in ("state", "irWebsite")}
+    patch_info(monkeypatch, info)
+
+    d = market.fetch_overview_profile("NPN.JO")["details"]
+
+    assert d["state"] is None
+    assert d["ir_website"] is None
+    assert d["sector"] == "Technology"
+
+
+def test_overview_stock_officers_are_capped_and_nameless_ones_dropped(monkeypatch):
+    officers = [{"name": f"Person {i}", "title": "VP"} for i in range(15)]
+    officers.insert(0, {"title": "No name"})
+    patch_info(monkeypatch, {**STOCK_INFO, "companyOfficers": officers})
+
+    got = market.fetch_overview_profile("AAPL")["details"]["officers"]
+
+    assert len(got) == market._MAX_OVERVIEW_OFFICERS
+    assert all(o["name"] for o in got)
+    assert got[0]["name"] == "Person 0"
+
+
+def test_overview_etf_maps_fund_details_and_converts_inception_date(monkeypatch):
+    patch_info(monkeypatch, {
+        "quoteType": "ETF", "longName": "SPDR S&P 500", "currency": "USD",
+        "longBusinessSummary": "Tracks the S&P 500.", "fundFamily": "State Street",
+        "category": "Large Blend", "legalType": "Exchange Traded Fund",
+        "fundInceptionDate": 727660800, "totalAssets": 5e11, "navPrice": 600.1,
+    })
+
+    p = market.fetch_overview_profile("SPY")
+
+    assert p["type"] == "ETF"
+    assert p["summary"] == "Tracks the S&P 500."
+    assert p["website"] is None
+    assert p["details"] == {
+        "fund_family": "State Street", "category": "Large Blend",
+        "legal_type": "Exchange Traded Fund", "inception_date": "1993-01-22",
+        "total_assets": 5e11, "nav_price": 600.1,
+    }
+
+
+def test_overview_crypto_uses_description_field_for_summary(monkeypatch):
+    patch_info(monkeypatch, {
+        "quoteType": "CRYPTOCURRENCY", "shortName": "Bitcoin USD", "currency": "USD",
+        "description": "Bitcoin is a cryptocurrency.", "website": "https://bitcoin.org/",
+        "circulatingSupply": 19_800_000, "marketCap": 2e12, "startDate": 1278979200,
+    })
+
+    p = market.fetch_overview_profile("BTC-USD")
+
+    assert p["type"] == "Crypto"
+    assert p["summary"] == "Bitcoin is a cryptocurrency."
+    assert p["details"] == {
+        "circulating_supply": 19_800_000, "market_cap": 2e12, "launch_date": "2010-07-13",
+    }
+
+
+def test_overview_index_has_no_summary_and_empty_details(monkeypatch):
+    patch_info(monkeypatch, {
+        "quoteType": "INDEX", "longName": "S&P 500", "currency": "USD", "exchange": "SNP",
+    })
+
+    p = market.fetch_overview_profile("^GSPC")
+
+    assert p["type"] == "Index"
+    assert p["summary"] is None
+    assert p["website"] is None
+    assert p["details"] == {}
+    assert p["exchange"] == "SNP"
+
+
+def test_overview_unrecognised_quote_type_gets_no_type_and_empty_details(monkeypatch):
+    patch_info(monkeypatch, {"quoteType": "MUTUALFUND", "longName": "Some Fund"})
+
+    p = market.fetch_overview_profile("VFIAX")
+
+    assert p["type"] is None
+    assert p["details"] == {}
+
+
+def test_overview_name_falls_back_to_short_name_then_ticker(monkeypatch):
+    patch_info(monkeypatch, {"quoteType": "EQUITY", "shortName": "Short"})
+    assert market.fetch_overview_profile("x")["name"] == "Short"
+
+    patch_info(monkeypatch, {"quoteType": "EQUITY", "regularMarketPrice": 1.0})
+    assert market.fetch_overview_profile("x")["name"] == "X"
+
+
+def test_overview_degenerate_dict_is_invalid(monkeypatch):
+    patch_info(monkeypatch, {"trailingPegRatio": None})
+    assert market.fetch_overview_profile("ZZZZINVALID") is None
+
+
+def test_overview_empty_dict_is_invalid(monkeypatch):
+    patch_info(monkeypatch, {})
+    assert market.fetch_overview_profile("ZZZZINVALID") is None
+
+
+def test_overview_rate_limit_records_hit_and_reraises(monkeypatch):
+    class RaisingTicker:
+        @property
+        def info(self):
+            raise YFRateLimitError()
+
+    monkeypatch.setattr(market.yf, "Ticker", lambda t: RaisingTicker())
+    before = market.get_rate_limit_state()["hits"]
+
+    with pytest.raises(YFRateLimitError):
+        market.fetch_overview_profile("AAPL")
+
+    assert market.get_rate_limit_state()["hits"] == before + 1
+
+
+def test_unix_to_iso_date_rejects_non_numbers_and_garbage():
+    assert market._unix_to_iso_date(None) is None
+    assert market._unix_to_iso_date("1278979200") is None
+    assert market._unix_to_iso_date(True) is None
+    assert market._unix_to_iso_date(10**20) is None
+    assert market._unix_to_iso_date(0) == "1970-01-01"
+
+
+def test_overview_quote_type_map_matches_search_module():
+    from services import search
+    assert market._OVERVIEW_QUOTE_TYPES == search.QUOTE_TYPE_MAP
