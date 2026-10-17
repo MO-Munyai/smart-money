@@ -1,4 +1,5 @@
 import main
+from yfinance.exceptions import YFRateLimitError
 from tests.conftest import seed_instrument
 
 
@@ -213,3 +214,94 @@ def test_search_endpoint_passes_filters_through(client, monkeypatch):
     assert r.status_code == 200
     assert captured == {"q": "shoprite", "type_filter": "Stock", "country_filter": "South Africa"}
     assert r.json()["results"][0]["ticker"] == "SHP.JO"
+
+
+# --- GET /instruments/{ticker}/overview (7.1.3) ---
+
+OVERVIEW_PROFILE = {
+    "ticker": "AAPL", "name": "Apple Inc.", "type": "Stock", "exchange": "NasdaqGS",
+    "currency": "USD", "summary": "Designs phones.", "website": None,
+    "details": {"sector": "Technology", "officers": []},
+}
+
+
+def test_overview_for_unregistered_ticker_works_and_is_flagged_unregistered(client, monkeypatch):
+    monkeypatch.setattr(main, "fetch_overview_profile", lambda t: dict(OVERVIEW_PROFILE))
+
+    r = client.get("/instruments/AAPL/overview")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["registered"] is False
+    assert body["name"] == "Apple Inc."
+    assert body["details"]["sector"] == "Technology"
+
+
+def test_overview_for_registered_ticker_is_flagged_registered(client, db, monkeypatch):
+    seed_instrument(db, "AAPL")
+    monkeypatch.setattr(main, "fetch_overview_profile", lambda t: dict(OVERVIEW_PROFILE))
+
+    r = client.get("/instruments/AAPL/overview")
+
+    assert r.status_code == 200
+    assert r.json()["registered"] is True
+
+
+def test_overview_registered_lookup_is_case_insensitive(client, db, monkeypatch):
+    seed_instrument(db, "AAPL")
+    monkeypatch.setattr(main, "fetch_overview_profile", lambda t: dict(OVERVIEW_PROFILE))
+
+    assert client.get("/instruments/aapl/overview").json()["registered"] is True
+
+
+def test_overview_keeps_null_fields_in_the_response(client, monkeypatch):
+    """The API shape stays stable; hiding empty fields is the frontend's job."""
+    monkeypatch.setattr(main, "fetch_overview_profile", lambda t: dict(OVERVIEW_PROFILE))
+
+    body = client.get("/instruments/AAPL/overview").json()
+
+    assert "website" in body
+    assert body["website"] is None
+
+
+def test_overview_passes_ticker_through_to_the_service(client, monkeypatch):
+    captured = {}
+
+    def fake(ticker):
+        captured["ticker"] = ticker
+        return dict(OVERVIEW_PROFILE)
+
+    monkeypatch.setattr(main, "fetch_overview_profile", fake)
+
+    client.get("/instruments/NPN.JO/overview")
+
+    assert captured["ticker"] == "NPN.JO"
+
+
+def test_overview_invalid_ticker_returns_404(client, monkeypatch):
+    monkeypatch.setattr(main, "fetch_overview_profile", lambda t: None)
+
+    r = client.get("/instruments/ZZZZINVALID/overview")
+
+    assert r.status_code == 404
+    assert r.json()["detail"] == "Ticker not found"
+
+
+def test_overview_rate_limit_returns_503_not_404(client, monkeypatch):
+    def raising(ticker):
+        raise YFRateLimitError()
+
+    monkeypatch.setattr(main, "fetch_overview_profile", raising)
+
+    r = client.get("/instruments/AAPL/overview")
+
+    assert r.status_code == 503
+    assert "rate-limiting" in r.json()["detail"]
+
+
+def test_overview_does_not_write_anything_to_the_registry(client, db, monkeypatch):
+    monkeypatch.setattr(main, "fetch_overview_profile", lambda t: dict(OVERVIEW_PROFILE))
+
+    client.get("/instruments/AAPL/overview")
+
+    assert client.get("/instruments").json() == []

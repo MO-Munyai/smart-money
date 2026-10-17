@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from yfinance.exceptions import YFRateLimitError
 
 import models
 import schemas
@@ -14,7 +15,7 @@ import crud
 from database import SessionLocal, engine
 from services.market import (
     get_live_price, get_live_prices, get_price_history, fetch_asset_metadata,
-    get_rate_limit_state, get_market_overview
+    get_rate_limit_state, get_market_overview, fetch_overview_profile
 )
 from services.search import search_instruments, get_known_types, get_known_countries
 
@@ -220,6 +221,31 @@ def get_instrument_profile(ticker: str, db: Session = Depends(get_db)):
         "added_at": instrument.added_at,
         "live_price": get_live_price(ticker),
         **metadata
+    }
+
+
+@app.get("/instruments/{ticker}/overview")
+def get_instrument_overview(ticker: str, db: Session = Depends(get_db)):
+    """
+    Descriptive profile for the Instrument Overview page (7.1). Unlike the
+    other /instruments/{ticker}/... routes this works for ANY valid ticker,
+    registered or not, so it can be opened from a search result before the
+    user registers it. `registered` tells the page whether to offer Register.
+    Fetched live every time - no overview data is persisted.
+    """
+    try:
+        profile = fetch_overview_profile(ticker)
+    except YFRateLimitError:
+        raise HTTPException(
+            status_code=503,
+            detail="Yahoo Finance is rate-limiting requests right now - try again shortly"
+        )
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Ticker not found")
+
+    return {
+        **profile,
+        "registered": crud.get_instrument_by_ticker(db, ticker) is not None
     }
 
 
