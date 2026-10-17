@@ -180,18 +180,25 @@ else:
         st.dataframe(df, width="stretch")
 
         tickers = [i["ticker"] for i in instruments]
-        col1, col2 = st.columns([3, 1])
+        col1, col2, col3 = st.columns([3, 1, 1])
         with col1:
-            ticker_to_remove = st.selectbox("Remove instrument", tickers)
+            registry_ticker = st.selectbox(
+                "Select instrument", tickers, key="registry_ticker"
+            )
         with col2:
             st.write("")
             st.write("")
+            if st.button("Overview", key="overview_registry"):
+                st.switch_page(OVERVIEW_PAGE, query_params={"ticker": registry_ticker})
+        with col3:
+            st.write("")
+            st.write("")
             if st.button("Remove"):
-                d, derr = api_request("DELETE", f"{API_URL}/instruments/{ticker_to_remove}")
+                d, derr = api_request("DELETE", f"{API_URL}/instruments/{registry_ticker}")
                 if derr:
                     st.error(derr)
                 elif d.status_code == 200:
-                    st.success(f"{ticker_to_remove} removed")
+                    st.success(f"{registry_ticker} removed")
                     st.rerun()
                 else:
                     st.error(error_detail(d, "Failed to remove instrument"))

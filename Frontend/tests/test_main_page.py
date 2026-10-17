@@ -305,3 +305,56 @@ def test_each_search_result_gets_its_own_overview_button(backend):
     at.button(key="overview_search_NPN.JO").click().run()
     assert at.query_params["ticker"] == ["NPN.JO"]
     assert backend.calls_to("GET", "/instruments/SHP.JO/overview") == []
+
+
+# --- registry Overview button (7.1.7) ---
+
+def test_registry_selector_is_labelled_for_both_actions(backend):
+    route_defaults(backend)
+    at = run_main()
+    assert at.selectbox(key="registry_ticker").label == "Select instrument"
+    assert at.selectbox(key="registry_ticker").options == ["AAPL", "BTC-USD"]
+    assert button(at, "Overview") is not None
+    assert button(at, "Remove") is not None
+
+
+def test_registry_overview_button_opens_page_for_the_selected_ticker(backend):
+    route_defaults(backend)
+    backend.set("GET", "/instruments/AAPL/overview",
+                FakeResponse(200, {**SHP_OVERVIEW, "ticker": "AAPL", "name": "Apple Inc.",
+                                   "registered": True}))
+    at = run_main()
+    button(at, "Overview").click().run()
+    assert not at.exception
+    assert at.query_params["ticker"] == ["AAPL"]
+    assert at.header[0].value == "Apple Inc."
+
+
+def test_registry_overview_button_follows_a_changed_selection(backend):
+    route_defaults(backend)
+    backend.set("GET", "/instruments/BTC-USD/overview",
+                FakeResponse(200, {**SHP_OVERVIEW, "ticker": "BTC-USD", "name": "Bitcoin USD",
+                                   "type": "Crypto", "registered": True}))
+    at = run_main()
+    at.selectbox(key="registry_ticker").select("BTC-USD").run()
+    button(at, "Overview").click().run()
+    assert at.query_params["ticker"] == ["BTC-USD"]
+    assert backend.calls_to("GET", "/instruments/AAPL/overview") == []
+
+
+def test_registry_overview_button_does_not_delete_anything(backend):
+    route_defaults(backend)
+    backend.set("GET", "/instruments/AAPL/overview",
+                FakeResponse(200, {**SHP_OVERVIEW, "ticker": "AAPL", "registered": True}))
+    at = run_main()
+    button(at, "Overview").click().run()
+    assert backend.calls_to("DELETE", "/instruments/AAPL") == []
+
+
+def test_remove_still_deletes_the_selected_registry_ticker(backend):
+    route_defaults(backend)
+    backend.set("DELETE", "/instruments/BTC-USD", FakeResponse(200, {"message": "ok"}))
+    at = run_main()
+    at.selectbox(key="registry_ticker").select("BTC-USD").run()
+    button(at, "Remove").click().run()
+    assert len(backend.calls_to("DELETE", "/instruments/BTC-USD")) == 1
