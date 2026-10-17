@@ -141,10 +141,13 @@ def build_links(overview):
 
 
 def build_officers(overview):
-    """Officer rows ({name, title}) with a name; titles may be missing."""
+    """
+    Officer rows with a name; titles may be missing. Key order is the display
+    column order: Title first, then Name.
+    """
     officers = (overview.get("details") or {}).get("officers") or []
     return [
-        {"Name": o["name"], "Title": o.get("title") or ""}
+        {"Title": o.get("title") or "", "Name": o["name"]}
         for o in officers
         if isinstance(o, dict) and has_value(o.get("name"))
     ]

@@ -149,7 +149,9 @@ def test_stock_profile_renders_every_section(backend):
     assert "[Website](https://apple.com)" in text
     assert "[Investor relations](https://investor.apple.com)" in text
     officers = at.dataframe[0].value
+    assert list(officers.columns) == ["Title", "Name"]
     assert list(officers["Name"]) == ["Tim Cook"]
+    assert list(officers["Title"]) == ["CEO"]
 
 
 def test_sparse_stock_hides_missing_fields_and_shows_no_na(backend):

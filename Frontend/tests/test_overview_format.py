@@ -181,9 +181,11 @@ def test_officers_drop_nameless_and_blank_titles_become_empty():
     overview = {"details": {"officers": [
         {"name": "A", "title": "CEO"}, {"name": "B", "title": None}, {"title": "no name"}, "junk",
     ]}}
-    assert f.build_officers(overview) == [
+    rows = f.build_officers(overview)
+    assert rows == [
         {"Name": "A", "Title": "CEO"}, {"Name": "B", "Title": ""},
     ]
+    assert list(rows[0]) == ["Title", "Name"]  # display order: Title first
 
 
 def test_officers_missing_is_empty_list():
