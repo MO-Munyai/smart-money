@@ -63,6 +63,24 @@ if overview.get("registered"):
     st.success("In your registry")
 else:
     st.info("Not in your registry yet")
+    # Yahoo types we don't support (e.g. mutual funds) come back with type
+    # None and can't be registered, so no button for those.
+    if overview.get("type"):
+        if st.button("Register", key="register_overview"):
+            reg_r, reg_err = api_request(
+                "POST", f"{API_URL}/instruments",
+                json={"ticker": overview["ticker"], "type": overview["type"]}
+            )
+            if reg_err:
+                st.error(reg_err)
+            elif reg_r.status_code == 200:
+                # Rerun so the overview is refetched and the status flips to
+                # "In your registry".
+                st.rerun()
+            else:
+                st.error(error_detail(reg_r, "Failed to register instrument"))
+    else:
+        st.caption("This type of instrument can't be added to the registry.")
 
 if is_empty_profile(overview):
     st.info(empty_profile_message(overview))

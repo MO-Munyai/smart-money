@@ -232,3 +232,83 @@ def test_unrecognised_type_with_nothing_shows_generic_fallback(backend):
             "summary": None, "website": None, "details": {}, "registered": False}
     at = load(backend, bare, "X")
     assert any("this instrument" in i.value for i in at.info)
+
+
+# --- Register button on the Overview page (7.1.8) ---
+
+def unregistered(**overrides):
+    return {**STOCK_PROFILE, "registered": False, **overrides}
+
+
+def test_unregistered_instrument_offers_a_register_button(backend):
+    at = load(backend, unregistered())
+    assert at.button(key="register_overview").label == "Register"
+
+
+def test_registered_instrument_has_no_register_button(backend):
+    at = load(backend, {**STOCK_PROFILE, "registered": True})
+    assert [b for b in at.button if b.key == "register_overview"] == []
+
+
+def test_register_posts_the_overview_ticker_and_type(backend):
+    backend.set("GET", "/instruments/aapl/overview", FakeResponse(200, unregistered()))
+    backend.set("POST", "/instruments", FakeResponse(200, {"ticker": "AAPL", "type": "Stock"}))
+    at = run_overview("aapl")
+    at.button(key="register_overview").click().run()
+    # Uses the canonical ticker from the payload, not the raw URL casing
+    assert backend.calls_to("POST", "/instruments")[-1][3] == {"ticker": "AAPL", "type": "Stock"}
+
+
+def test_register_success_refetches_and_flips_status_to_registered(backend):
+    def overview_route(params, json):
+        registered = bool(backend.calls_to("POST", "/instruments"))
+        return FakeResponse(200, {**STOCK_PROFILE, "registered": registered})
+
+    backend.set("GET", "/instruments/AAPL/overview", overview_route)
+    backend.set("POST", "/instruments", FakeResponse(200, {"ticker": "AAPL", "type": "Stock"}))
+    at = run_overview("AAPL")
+    assert any("Not in your registry" in i.value for i in at.info)
+
+    at.button(key="register_overview").click().run()
+
+    assert not at.exception
+    assert any("In your registry" in s.value for s in at.success)
+    assert not any("Not in your registry" in i.value for i in at.info)
+    assert [b for b in at.button if b.key == "register_overview"] == []
+    # initial load, the click run (button renders after the fetch), then the
+    # st.rerun() after a successful POST - that last fetch is what flips the status
+    assert len(backend.calls_to("GET", "/instruments/AAPL/overview")) == 3
+
+
+def test_register_failure_shows_backend_detail_and_stays_unregistered(backend):
+    backend.set("GET", "/instruments/AAPL/overview", FakeResponse(200, unregistered()))
+    backend.set("POST", "/instruments", FakeResponse(400, {"detail": "already registered"}))
+    at = run_overview("AAPL")
+    at.button(key="register_overview").click().run()
+    assert any("already registered" in e.value for e in at.error)
+    assert any("Not in your registry" in i.value for i in at.info)
+
+
+def test_register_backend_unreachable_shows_error(backend):
+    backend.set("GET", "/instruments/AAPL/overview", FakeResponse(200, unregistered()))
+    backend.set("POST", "/instruments", unreachable())
+    at = run_overview("AAPL")
+    at.button(key="register_overview").click().run()
+    assert not at.exception
+    assert any("Could not reach backend" in e.value for e in at.error)
+
+
+def test_unsupported_type_has_no_register_button_but_explains_why(backend):
+    at = load(backend, unregistered(type=None, details={}, summary=None, website=None))
+    assert [b for b in at.button if b.key == "register_overview"] == []
+    assert any("can't be added to the registry" in c.value for c in at.caption)
+
+
+def test_index_with_empty_profile_can_still_be_registered(backend):
+    index = {"ticker": "^GSPC", "name": "S&P 500", "type": "Index", "exchange": "SNP",
+             "currency": "USD", "summary": None, "website": None, "details": {},
+             "registered": False}
+    backend.set("GET", "/instruments/%5EGSPC/overview", FakeResponse(200, index))
+    at = run_overview("^GSPC")
+    assert at.button(key="register_overview").label == "Register"
+    assert any("indices" in i.value for i in at.info)
