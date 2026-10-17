@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 import requests
 import streamlit as st
+from streamlit.runtime.pages_manager import PagesManager
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent
 
@@ -50,6 +51,20 @@ class FakeBackend:
 
     def calls_to(self, method, path):
         return [c for c in self.calls if c[0] == method.upper() and c[1] == path]
+
+
+@pytest.fixture(autouse=True)
+def reset_streamlit_pages_flag():
+    """
+    PagesManager.uses_pages_directory is a class-level flag Streamlit sets once
+    per process from the FIRST AppTest main script's folder. If that first
+    script is a pages/*.py file (no pages/ folder beside it), the flag sticks
+    at False and every later app.py test can no longer find the pages it
+    switches to. Reset it so each test decides afresh from its own script.
+    """
+    PagesManager.uses_pages_directory = None
+    yield
+    PagesManager.uses_pages_directory = None
 
 
 @pytest.fixture()
