@@ -149,7 +149,7 @@ with st.form("register_instrument"):
             if err:
                 st.error(err)
             elif r.status_code == 200:
-                st.success(f"{ticker.upper()} registered")
+                st.success(f"{ticker.strip().upper()} registered")
             else:
                 st.error(error_detail(r, "Failed to register instrument"))
 
