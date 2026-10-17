@@ -55,6 +55,19 @@ def test_split_summary_short_text_returned_whole():
     assert f.split_summary("Short text.") == ("Short text.", None)
 
 
+def test_split_summary_slightly_over_the_limit_is_still_shown_whole():
+    text = "word " * 130  # ~650 chars: over 600 but within the 300 tolerance
+    preview, rest = f.split_summary(text.strip())
+    assert rest is None
+    assert preview == text.strip()
+
+
+def test_split_summary_well_over_the_limit_is_split():
+    preview, rest = f.split_summary(("word " * 250).strip())  # ~1250 chars
+    assert rest
+    assert len(preview) <= f.SUMMARY_PREVIEW_CHARS
+
+
 def test_split_summary_missing_or_blank_is_none():
     assert f.split_summary(None) == (None, None)
     assert f.split_summary("   ") == (None, None)

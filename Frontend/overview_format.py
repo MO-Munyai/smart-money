@@ -9,6 +9,9 @@ rule (user requirement): a field that is null/empty is HIDDEN, never shown as
 from datetime import date
 
 SUMMARY_PREVIEW_CHARS = 600
+# A summary only slightly over the preview length is shown whole: an expander
+# holding one trailing sentence is more annoying than just showing the text.
+SUMMARY_TOLERANCE_CHARS = 300
 
 
 def has_value(value):
@@ -61,17 +64,18 @@ def format_date(iso_value):
     return f"{parsed.day} {parsed:%b %Y}"
 
 
-def split_summary(text, limit=SUMMARY_PREVIEW_CHARS):
+def split_summary(text, limit=SUMMARY_PREVIEW_CHARS, tolerance=SUMMARY_TOLERANCE_CHARS):
     """
     Returns (preview, remainder). A summary within `limit` comes back whole
-    with remainder None. A longer one is cut at the last sentence end before
-    the limit (or the last space if there is none), and the rest is returned
-    so the page can tuck it into an expander instead of duplicating text.
+    with remainder None, as does one within `tolerance` characters over it.
+    A longer one is cut at the last sentence end before the limit (or the last
+    space if there is none), and the rest is returned so the page can tuck it
+    into an expander instead of duplicating text.
     """
     if not has_value(text):
         return None, None
     text = text.strip()
-    if len(text) <= limit:
+    if len(text) <= limit + tolerance:
         return text, None
 
     window = text[:limit]
