@@ -1,8 +1,13 @@
 from urllib.parse import quote
 
+import pandas as pd
 import streamlit as st
 
 from api_client import API_URL, api_request, error_detail, safe_json
+from overview_format import (
+    build_facts, build_links, build_officers, empty_profile_message,
+    is_empty_profile, split_summary,
+)
 
 st.set_page_config(page_title="SmartMoney - Instrument Overview", layout="wide")
 st.title("🏢 Instrument Overview")
@@ -58,3 +63,36 @@ if overview.get("registered"):
     st.success("In your registry")
 else:
     st.info("Not in your registry yet")
+
+if is_empty_profile(overview):
+    st.info(empty_profile_message(overview))
+    st.stop()
+
+# Every section below only renders when it has real content - empty fields are
+# hidden entirely rather than shown as "N/A".
+preview, remainder = split_summary(overview.get("summary"))
+if preview:
+    st.subheader("About")
+    st.write(preview)
+    if remainder:
+        with st.expander("Read the full description"):
+            st.write(remainder)
+
+facts = build_facts(overview)
+if facts:
+    st.subheader("Key facts")
+    for row_start in range(0, len(facts), 3):
+        columns = st.columns(3)
+        for column, (label, value) in zip(columns, facts[row_start:row_start + 3]):
+            column.markdown(f"**{label}**  \n{value}")
+
+links = build_links(overview)
+if links:
+    st.subheader("Links")
+    for label, url in links:
+        st.markdown(f"[{label}]({url})")
+
+officers = build_officers(overview)
+if officers:
+    st.subheader("Key officers")
+    st.dataframe(pd.DataFrame(officers), width="stretch", hide_index=True)
